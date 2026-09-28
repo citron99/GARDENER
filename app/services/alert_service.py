@@ -57,8 +57,11 @@ def dispatch_operational_alert(
         return False
     now = time.monotonic()
     with _lock:
-        previous = _last_sent.get(event, 0)
-        if now - previous < settings.alert_min_interval_seconds:
+        # ``monotonic`` starts near zero on a freshly booted host, so a missing
+        # entry must not be treated as "sent at uptime 0": that would silently
+        # drop the first alert of every event for the whole interval after boot.
+        previous = _last_sent.get(event)
+        if previous is not None and now - previous < settings.alert_min_interval_seconds:
             return False
         _last_sent[event] = now
     body = _payload(event, severity, details or {})

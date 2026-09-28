@@ -1575,6 +1575,20 @@ def test_partner_cabinet_isolated_products_leads_and_roles(client):
         files={"file": ("products.csv", updated_csv, "text/csv")},
     )
     assert imported_again.json() == {"created": 0, "updated": 1}
+    oversized_csv = (
+        b"sku,name,category,product_url\n"
+        + b"A" * 200_000
+        + b",Oversized,tools,https://first.example.com/oversized\n"
+    )
+    oversized = client.post(
+        "/api/v1/partner/products/import/csv",
+        headers=owner_headers,
+        files={"file": ("products.csv", oversized_csv, "text/csv")},
+    )
+    assert oversized.status_code == 422
+    assert oversized.json()["detail"]["message"] == (
+        "CSV contains an oversized or malformed field"
+    )
     imported_product = next(
         item
         for item in client.get("/api/v1/partner/products", headers=owner_headers).json()

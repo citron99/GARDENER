@@ -43,6 +43,11 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.add("hidden"), 3500);
 }
 
+function resetObjectUrls() {
+  for (const url of state.objectUrls) URL.revokeObjectURL(url);
+  state.objectUrls = [];
+}
+
 function dashboardStorageKey() {
   return `aiGardenDashboardWidgets:${state.profile?.id || "guest"}`;
 }
@@ -194,6 +199,7 @@ function clearSession() {
   state.profile = null;
   state.partnerAccount = null;
   sessionStorage.removeItem("aiGardenToken");
+  resetObjectUrls();
   appView.classList.add("hidden");
   authView.classList.remove("hidden");
   byId("logoutButton").classList.add("hidden");
@@ -1528,6 +1534,7 @@ async function loadReminders() {
 function renderPhotoSelection(files) {
   const preview = byId("photoPreview");
   preview.replaceChildren();
+  resetObjectUrls();
   [...files].slice(0, 5).forEach((file) => {
     const url = URL.createObjectURL(file);
     state.objectUrls.push(url);
@@ -1765,6 +1772,7 @@ async function loadHistory() {
     const history = await api(`/api/v1/plants/${state.selectedPlant.id}/history`);
     const list = byId("historyList");
     list.replaceChildren();
+    resetObjectUrls();
     if (!history.diagnoses.length) {
       list.append(element("p", "muted", "Диагностик пока нет."));
       return;

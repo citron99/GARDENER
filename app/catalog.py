@@ -1196,6 +1196,46 @@ def _csv_boolean(value: str | None, *, default: bool = True) -> bool:
     raise ValueError("in_stock must be true or false")
 
 
+def _csv_row_payload(row_number: int, row: dict) -> PartnerProductCreate:
+    """Validate one CSV row and translate errors into a 422 with the row number."""
+    try:
+        payload = PartnerProductCreate.model_validate(
+            {
+                "sku": (row.get("sku") or "").strip(),
+                "name": (row.get("name") or "").strip(),
+                "category": (row.get("category") or "").strip(),
+                "description": (row.get("description") or "").strip() or None,
+                "product_url": (row.get("product_url") or "").strip(),
+                "image_url": (row.get("image_url") or "").strip() or None,
+                "price_cents": (row.get("price_cents") or "").strip() or None,
+                "currency": (row.get("currency") or "eur").strip(),
+                "in_stock": _csv_boolean(row.get("in_stock")),
+                "regions": [
+                    value.strip()
+                    for value in (row.get("regions") or "").split("|")
+                    if value.strip()
+                ],
+            }
+        )
+        if not payload.sku:
+            raise ValueError("sku is required")
+        return payload
+    except (ValidationError, ValueError) as exc:
+        errors = (
+            exc.errors(include_url=False)
+            if isinstance(exc, ValidationError)
+            else [{"type": "value_error", "msg": str(exc)}]
+        )
+        raise HTTPException(
+            422,
+            {
+                "message": "Invalid CSV row",
+                "row": row_number,
+                "errors": errors,
+            },
+        ) from exc
+
+
 @router.post("/partner/products/import/csv")
 async def import_partner_products_csv(
     file: UploadFile = File(...),
@@ -1224,47 +1264,24 @@ async def import_partner_products_csv(
         )
 
     payloads: list[PartnerProductCreate] = []
-    for row_number, row in enumerate(reader, start=2):
-        if row_number > 1_001:
-            raise HTTPException(
-                422, {"message": "CSV row limit exceeded", "limit": 1_000}
-            )
-        try:
-            payload = PartnerProductCreate.model_validate(
-                {
-                    "sku": (row.get("sku") or "").strip(),
-                    "name": (row.get("name") or "").strip(),
-                    "category": (row.get("category") or "").strip(),
-                    "description": (row.get("description") or "").strip() or None,
-                    "product_url": (row.get("product_url") or "").strip(),
-                    "image_url": (row.get("image_url") or "").strip() or None,
-                    "price_cents": (row.get("price_cents") or "").strip() or None,
-                    "currency": (row.get("currency") or "eur").strip(),
-                    "in_stock": _csv_boolean(row.get("in_stock")),
-                    "regions": [
-                        value.strip()
-                        for value in (row.get("regions") or "").split("|")
-                        if value.strip()
-                    ],
-                }
-            )
-            if not payload.sku:
-                raise ValueError("sku is required")
-            payloads.append(payload)
-        except (ValidationError, ValueError) as exc:
-            errors = (
-                exc.errors(include_url=False)
-                if isinstance(exc, ValidationError)
-                else [{"type": "value_error", "msg": str(exc)}]
-            )
-            raise HTTPException(
-                422,
-                {
-                    "message": "Invalid CSV row",
-                    "row": row_number,
-                    "errors": errors,
-                },
-            ) from exc
+    row_number = 2
+    try:
+        for row_number, row in enumerate(reader, start=2):
+            if row_number > 1_001:
+                raise HTTPException(
+                    422, {"message": "CSV row limit exceeded", "limit": 1_000}
+                )
+            payloads.append(_csv_row_payload(row_number, row))
+    except csv.Error as exc:
+        # csv.Error is not a ValueError: an oversized field would otherwise
+        # escape the validation branch and surface as an HTTP 500.
+        raise HTTPException(
+            422,
+            {
+                "message": "CSV contains an oversized or malformed field",
+                "row": row_number,
+            },
+        ) from exc
     if not payloads:
         raise HTTPException(422, {"message": "CSV contains no products"})
 
