@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -8,7 +8,6 @@ from app.auth import hash_password
 from app.config import settings
 from app.database import SessionLocal
 from app.models import Partner, PartnerMember, User
-
 
 DEMO_ACCOUNTS = (
     ("demo@ai-garden.local", "Demo Gardener", "GardenDemo2026!", False),
@@ -21,7 +20,7 @@ def seed_demo_users() -> None:
     if settings.environment == "production":
         raise RuntimeError("Demo users must never be seeded in production")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with SessionLocal() as db:
         users: dict[str, User] = {}
         for email, name, password, is_admin in DEMO_ACCOUNTS:

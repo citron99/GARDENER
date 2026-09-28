@@ -1,6 +1,6 @@
-from datetime import date, datetime, timezone
 import hashlib
 import json
+from datetime import UTC, date, datetime
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -31,7 +31,7 @@ def revalidate_registry_rules(db: Session, *, today: date | None = None) -> int:
 
 
 def import_registration_snapshot(db: Session, payload: RegistrationSnapshotImport) -> dict[str, int]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     created = 0
     updated = 0
     seen: set[tuple[str, str]] = set()

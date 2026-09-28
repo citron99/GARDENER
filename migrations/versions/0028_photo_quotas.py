@@ -4,9 +4,8 @@ Revision ID: 0028_photo_quotas
 Revises: 0027_refresh_reuse
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0028_photo_quotas"
 down_revision = "0027_refresh_reuse"

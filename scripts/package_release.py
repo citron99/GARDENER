@@ -5,7 +5,6 @@ from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
-
 EXCLUDED_DIRECTORIES = {
     ".agents",
     ".git",

@@ -10,8 +10,7 @@ from app.admin_cli import set_admin
 from app.config import settings, validate_runtime_settings
 from app.database import SessionLocal
 from app.models import Partner
-from app.services import alert_service
-from app.services import notification_service
+from app.services import alert_service, notification_service
 from app.services import rate_limit_service as rate_limit
 from app.services.partner_attribution_service import (
     hash_partner_key,
@@ -20,7 +19,6 @@ from app.services.partner_attribution_service import (
 )
 from app.services.weather_service import WeatherService
 from tests.test_api import create_plant, register
-
 
 # --- 1. Redis rate limiting: one pooled client, atomic INCR+EXPIRE -----------
 
@@ -160,7 +158,7 @@ def test_weather_cache_never_exceeds_configured_entries(monkeypatch):
     for index in range(6):
         service.get_forecast(f"City{index}", "ru")
     assert len(service._cache) == 3
-    assert list(service._cache)[0] == "ru:city3"
+    assert next(iter(service._cache)) == "ru:city3"
 
 
 # --- 4. Logout reports whether a session was really revoked ------------------

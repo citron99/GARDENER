@@ -1,9 +1,8 @@
 import ast
-from pathlib import Path
 import re
+from pathlib import Path
 
 from app.i18n import translate_http_error
-
 
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 
@@ -18,9 +17,13 @@ def _literal_http_errors():
             if name != "HTTPException" or len(node.args) < 2:
                 continue
             status_node, detail_node = node.args[:2]
-            if isinstance(status_node, ast.Constant) and isinstance(status_node.value, int):
-                if isinstance(detail_node, ast.Constant) and isinstance(detail_node.value, str):
-                    yield status_node.value, detail_node.value
+            if (
+                isinstance(status_node, ast.Constant)
+                and isinstance(status_node.value, int)
+                and isinstance(detail_node, ast.Constant)
+                and isinstance(detail_node.value, str)
+            ):
+                yield status_node.value, detail_node.value
 
 
 def test_all_literal_russian_http_errors_have_non_cyrillic_lv_en_output():

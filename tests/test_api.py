@@ -1,8 +1,8 @@
-from io import BytesIO
-from hashlib import sha256
-from pathlib import Path
-from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from io import BytesIO
+from pathlib import Path
 from threading import Event, Lock
 
 from PIL import Image
@@ -13,8 +13,8 @@ from app.ai.base import AIProviderError
 from app.config import settings
 from app.database import SessionLocal
 from app.models import (
-    AIRequestLog,
     AdminAuditLog,
+    AIRequestLog,
     Diagnosis,
     DiagnosisJob,
     PartnerInvoice,
@@ -679,7 +679,7 @@ def test_calendar_includes_localized_seasonal_tasks(client):
 
 def test_due_notifications_are_idempotent_private_and_readable(client):
     plant, headers = create_plant(client)
-    now = datetime(2026, 7, 13, 8, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 13, 8, tzinfo=UTC)
     reminder = client.post(
         f"/api/v1/plants/{plant['id']}/reminders",
         headers=headers,
@@ -1557,10 +1557,10 @@ def test_partner_cabinet_isolated_products_leads_and_roles(client):
     )
 
     csv_body = (
-        "sku,name,category,description,product_url,image_url,price_cents,currency,in_stock,regions\n"
-        "SOIL-001,Soil meter,tools,Manual soil meter,https://first.example.com/soil-meter,"
-        "https://first.example.com/images/soil-meter.jpg,3199,EUR,true,Latvia|Estonia\n"
-    ).encode()
+        b"sku,name,category,description,product_url,image_url,price_cents,currency,in_stock,regions\n"
+        b"SOIL-001,Soil meter,tools,Manual soil meter,https://first.example.com/soil-meter,"
+        b"https://first.example.com/images/soil-meter.jpg,3199,EUR,true,Latvia|Estonia\n"
+    )
     imported = client.post(
         "/api/v1/partner/products/import/csv",
         headers=owner_headers,
@@ -1748,7 +1748,7 @@ def test_partner_conversion_review_attribution_and_invoice(client):
     assert overview["confirmed_conversions"] == 1
     assert overview["uninvoiced_amount_cents"] == 250
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     period_start = today.replace(day=1)
     period_end = (
         period_start.replace(year=period_start.year + 1, month=1)
@@ -2133,7 +2133,7 @@ def test_manual_invoice_payment_creates_audited_payment_record(client):
             "billing_email": "billing@manual-payment.example.com",
         },
     ).json()
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     period_start = today.replace(day=1)
     period_end = (
         period_start.replace(year=period_start.year + 1, month=1)

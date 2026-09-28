@@ -13,7 +13,6 @@ from scripts.backup_restore import (
     verify_postgres_backup,
 )
 
-
 DATABASE_URL = "postgresql+psycopg://gardener:private-password@db:5432/gardener"
 
 
@@ -53,8 +52,12 @@ def test_backup_is_atomic_and_has_checksum_manifest(tmp_path, monkeypatch):
 
 
 def test_restore_requires_exact_confirmation_and_verified_checksum(tmp_path, monkeypatch):
+    def _write_backup_file(command):
+        with open(command[command.index("--file") + 1], "wb") as handle:
+            return handle.write(b"backup")
+
     monkeypatch.setattr(subprocess, "run", lambda command, **kwargs: (
-        open(command[command.index("--file") + 1], "wb").write(b"backup")
+        _write_backup_file(command)
         if "--file" in command else subprocess.CompletedProcess(command, 0)
     ))
     backup, _manifest = create_postgres_backup(DATABASE_URL, tmp_path)
@@ -62,7 +65,7 @@ def test_restore_requires_exact_confirmation_and_verified_checksum(tmp_path, mon
         restore_postgres_backup(DATABASE_URL, backup, confirm_target="wrong")
 
     backup.write_bytes(b"tampered")
-    with pytest.raises(ValueError, match="size|checksum"):
+    with pytest.raises(ValueError, match=r"size|checksum"):
         restore_postgres_backup(
             DATABASE_URL,
             backup,

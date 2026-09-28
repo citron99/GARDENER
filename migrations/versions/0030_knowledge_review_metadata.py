@@ -4,9 +4,8 @@ Revision ID: 0030_knowledge_review
 Revises: 0029_catalog_taxonomy
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0030_knowledge_review"
 down_revision = "0029_catalog_taxonomy"

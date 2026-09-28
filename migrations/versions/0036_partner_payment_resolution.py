@@ -7,7 +7,6 @@ Revises: 0035_partner_payments
 import sqlalchemy as sa
 from alembic import op
 
-
 revision = "0036_payment_resolution"
 down_revision = "0035_partner_payments"
 branch_labels = None

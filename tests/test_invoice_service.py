@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 from app.config import settings
@@ -7,7 +7,7 @@ from app.services.invoice_service import render_invoice_pdf
 
 
 def _invoice_with_line_items(count: int):
-    now = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
     line_items = [
         {
             "description": f"Confirmed partner lead #{index + 1}",

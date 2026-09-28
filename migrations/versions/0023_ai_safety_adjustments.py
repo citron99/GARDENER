@@ -4,9 +4,8 @@ Revision ID: 0023_ai_safety
 Revises: 0022_product_registry
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0023_ai_safety"
 down_revision = "0022_product_registry"

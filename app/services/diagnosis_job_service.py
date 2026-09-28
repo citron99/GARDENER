@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
 import logging
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import and_, or_, select, update
@@ -7,12 +7,21 @@ from sqlalchemy import and_, or_, select, update
 from app.ai import AIProviderError, create_ai_gateway
 from app.config import settings
 from app.database import SessionLocal
-from app.models import (AIRequestLog, AISafetyAdjustment, Diagnosis, DiagnosisAnswer, DiagnosisJob,
-                        DiagnosisQuestion, DiagnosisRevision, Plant, PlantPhoto, User)
+from app.models import (
+    AIRequestLog,
+    AISafetyAdjustment,
+    Diagnosis,
+    DiagnosisAnswer,
+    DiagnosisJob,
+    DiagnosisQuestion,
+    DiagnosisRevision,
+    Plant,
+    PlantPhoto,
+    User,
+)
 from app.schemas import DiagnosisCreate
 from app.services.ai_safety import safety_identifier_for_user
 from app.services.safety_policy_service import enforce_diagnosis_safety
-
 
 logger = logging.getLogger(__name__)
 worker_gateway = create_ai_gateway(settings.ai_provider)
@@ -32,7 +41,7 @@ def _public_ai_error(http_status: int) -> str:
 
 def _claim_job(db, job_id: str) -> tuple[DiagnosisJob | None, str | None]:
     """Atomically acquire a renewable execution lease before any paid AI call."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     token = str(uuid4())
     lease_seconds = max(900, settings.celery_task_timeout_seconds * 2)
     claimed = db.execute(
@@ -207,7 +216,7 @@ def process_diagnosis_job(
             job.status = "succeeded"
             job.execution_token = None
             job.lease_expires_at = None
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             db.commit()
             return diagnosis.id
         except AIProviderError as exc:
@@ -224,7 +233,7 @@ def process_diagnosis_job(
             job.lease_expires_at = None
             job.error_type = exc.error_type
             job.error_message = _public_ai_error(exc.http_status)
-            job.completed_at = None if retryable else datetime.now(timezone.utc)
+            job.completed_at = None if retryable else datetime.now(UTC)
             db.add(AIRequestLog(
                 user_id=job.user_id,
                 diagnosis_id=job.diagnosis_id,
@@ -253,7 +262,7 @@ def process_diagnosis_job(
                     lease_expires_at=None,
                     error_type="internal_error",
                     error_message="Не удалось завершить фоновый анализ",
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                 )
             )
             db.commit()

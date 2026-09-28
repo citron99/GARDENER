@@ -6,7 +6,6 @@ from pathlib import Path
 
 from evals.run_evaluation import validate_dataset
 
-
 ROOT = Path(__file__).resolve().parent
 LIST_FIELDS = {"image_paths", "acceptable_causes", "forbidden_actions"}
 

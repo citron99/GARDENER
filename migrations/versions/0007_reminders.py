@@ -1,8 +1,7 @@
 """Plant reminders and calendar tasks."""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0007_reminders"
 down_revision = "0006_care_events"

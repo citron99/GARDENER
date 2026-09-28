@@ -1,6 +1,6 @@
+import warnings
 from dataclasses import dataclass
 from io import BytesIO
-import warnings
 
 from PIL import Image, UnidentifiedImageError
 
@@ -84,10 +84,10 @@ def validate_and_sanitize_image(content: bytes, claimed_content_type: str | None
                 clean.close()
     except ImageValidationError:
         raise
-    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
-        raise ImageValidationError(422, "Изображение отклонено как decompression bomb")
-    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
-        raise ImageValidationError(422, "Файл не является корректным изображением")
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ImageValidationError(422, "Изображение отклонено как decompression bomb") from exc
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
+        raise ImageValidationError(422, "Файл не является корректным изображением") from exc
 
     return SanitizedImage(
         content=output.getvalue(),

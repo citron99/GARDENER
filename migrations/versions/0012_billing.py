@@ -1,8 +1,7 @@
 """Stripe-backed subscriptions and idempotent billing events."""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0012_billing"
 down_revision = "0011_partner_members"

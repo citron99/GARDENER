@@ -1,8 +1,7 @@
 """Вопросы, ответы, обратная связь и версии диагностики."""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0003_diagnosis_workflow"
 down_revision = "0002_diagnosis_photos"

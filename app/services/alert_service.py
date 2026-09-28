@@ -1,15 +1,14 @@
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
 import logging
-from threading import Lock, Thread
 import time
+from datetime import UTC, datetime
+from threading import Lock, Thread
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from app.config import settings
-
 
 logger = logging.getLogger(__name__)
 _lock = Lock()
@@ -20,7 +19,7 @@ def _payload(event: str, severity: str, details: dict[str, str | int | float | b
     return json.dumps({
         "event": event,
         "severity": severity,
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "occurred_at": datetime.now(UTC).isoformat(),
         "environment": settings.environment,
         "details": details,
     }, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

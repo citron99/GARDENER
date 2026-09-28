@@ -20,7 +20,6 @@ from app.services.telegram_service import (
     unlink_account,
 )
 
-
 router = APIRouter(prefix="/api/v1/telegram", tags=["telegram"])
 
 

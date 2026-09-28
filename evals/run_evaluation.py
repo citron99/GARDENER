@@ -1,11 +1,10 @@
 import argparse
 import json
-from pathlib import Path
 import sys
 from datetime import date
+from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
-
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,7 +25,7 @@ def validate_dataset(cases: list[dict], minimum_cases: int = 200) -> list[str]:
     if len(cases) < minimum_cases:
         errors.append(f"Нужно минимум {minimum_cases} экспертных случаев; найдено {len(cases)}")
     identifiers: set[str] = set()
-    category_counts = {category: 0 for category in ALLOWED_CATEGORIES}
+    category_counts = dict.fromkeys(ALLOWED_CATEGORIES, 0)
     for index, case in enumerate(cases):
         missing = REQUIRED_FIELDS - case.keys()
         if missing:

@@ -7,7 +7,6 @@ Revises: 0036_payment_resolution
 import sqlalchemy as sa
 from alembic import op
 
-
 revision = "0037_invoice_cancellations"
 down_revision = "0036_payment_resolution"
 branch_labels = None

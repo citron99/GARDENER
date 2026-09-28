@@ -1,14 +1,13 @@
-from collections import defaultdict, deque
-from functools import lru_cache
 import hashlib
 import hmac
-from threading import Lock
 import time
+from collections import defaultdict, deque
+from functools import lru_cache
+from threading import Lock
 
 from fastapi import HTTPException
 
 from app.config import settings
-
 
 _attempts: dict[str, deque[float]] = defaultdict(deque)
 _lock = Lock()

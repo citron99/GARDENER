@@ -2,8 +2,8 @@ import hashlib
 import hmac
 import json
 
-from app.config import settings
 import app.services.alert_service as alert_service
+from app.config import settings
 
 
 class ImmediateThread:

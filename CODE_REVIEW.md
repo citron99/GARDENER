@@ -53,19 +53,54 @@
 
 **9. `FORWARDED_ALLOW_IPS="*"` в `compose.prod.yaml`.** Заменено на `127.0.0.1` и приватные диапазоны Docker (`10/8`, `172.16/12`, `192.168/16`) с возможностью переопределения через переменную окружения — `X-Forwarded-*` теперь доверяется только bundled-прокси.
 
-**10. Неиспользуемая dev-зависимость `httpx2`.** Удалена из `requirements-dev.txt` и из `requirements-dev.lock` вместе с exclusivo-dependent `httpcore2` и `truststore`. Целостность лока проверена: `pip install --dry-run --require-hashes -r requirements-dev.lock` проходит.
+**10. Неиспользуемая dev-зависимость `httpx2`.** Удалена из `requirements-dev.txt` и из `requirements-dev.lock` вместе с зависимостями `httpcore2` и `truststore`, которые нужны были только ей. Целостность лока проверена: `pip install --dry-run --require-hashes -r requirements-dev.lock` проходит.
 
 ### Низкий приоритет
 
 **11. `hash_partner_key` был обычным SHA-256.** Ключ теперь хешируется через HMAC с `PARTNER_ATTRIBUTION_SECRET`. Обратная совместимость сохранена: `verify_partner_key` принимает и старый digest и при успешном postback'е прозрачно перехеширует его — партнёрам не нужно вручную ротировать ключи.
 
-**12. Схема URL алерт-вебхука.** Добавлена проверка в `validate_runtime_settings` (http/https в любой среде) иguard в `alert_service._send`: `file://` и любые не-HTTP схемы отклоняются с записью в лог. Bandit B310 по этому месту больше не срабатывает.
+**12. Схема URL алерт-вебхука.** Добавлена проверка в `validate_runtime_settings` (http/https в любой среде) и сторож в `alert_service._send`: `file://` и любые не-HTTP схемы отклоняются с записью в лог. Bandit B310 по этому месту больше не срабатывает.
 
 **13. `request_body_limit` учитывал только `Content-Length`.** Middleware переписан на чистый ASGI (`RequestBodyLimitMiddleware`): тело считается по байтам в потоке, поэтому chunked-запросы без `Content-Length` тоже отсекаются, а лимит соблюдается как единая граница. Подтверждено на живом сервере: 70 МБ с `Transfer-Encoding: chunked` → 413, обычная multipart-загрузка → 201.
 
 **14. `downloadAuthenticatedFile` отзывал blob URL в тот же тик.** Ссылка теперь добавляется в DOM, кликается, удаляется, а `revokeObjectURL` вызывается отложенно; тот же помощник `downloadBlobUrl` использован и для экспорта данных аккаунта.
 
-**15. Не было конфигурации `ruff`/`pytest`.** Добавлен `pyproject.toml`: `[tool.ruff]` (target-version, line-length 120, исключения), `[tool.ruff.lint]` с явным набором правил, которые CI проверяет сегодня (`E4`, `E7`, `E9`, `F`), `[tool.ruff.format]` и `[tool.pytest.ini_options]` (`testpaths`, `pythonpath`). Набор правил намеренно оставлен прежним: расширение до `I`/`B`/`UP`/`SIM` — отдельная задача (сейчас это 80+ исправлений только по `I`).
+**15. Не было конфигурации `ruff`/`pytest`.** Добавлен `pyproject.toml`: `[tool.ruff]` (target-version, line-length 120, исключения), `[tool.ruff.lint]` с явным набором правил, которые CI проверяет сегодня (`E4`, `E7`, `E9`, `F`), `[tool.ruff.format]` и `[tool.pytest.ini_options]` (`testpaths`, `pythonpath`). Набор правил позже расширен: `I`, `B`, `C4`, `SIM`, `UP`, `RUF` — 267 замечаний, 232 сняты автофиксом, 35 правлены вручную (в основном `B904`: цепочка `raise ... from exc` в 29 обработчиках). `RUF001`/`RUF002` отключены сознательно (кириллица в строках — не опечатка), а 221 срабатывание `B008` — это дефолты FastAPI-зависимостей, они сняты через `flake8-bugbear.extend-immutable-calls`. См. раздел «Второй заход» ниже.
+
+---
+
+## Второй заход: замечания к деплою
+
+Оба пункта, оставленные ранее «на потом», закрыты — и оба сразу выявили настоящие дефекты.
+
+**1. Набор правил `ruff` расширен.** Вместо `E4,E7,E9,F` теперь `E4,E7,E9,F,I,B,C4,SIM,UP,RUF`
+(плюс `scripts` в списке путей CI). 267 замечаний → 232 автофикса (сортировка импортов, `datetime.UTC`,
+`dict()`/`typing.List`, `next(iter(...))`) и 35 правок вручную. Ключевое вручную: **`B904` — 29 обработчиков
+теперь поднимают `raise ... from exc`**, то есть в логах видна первопричина, а не только итоговая ошибка.
+Сознательные исключения: `RUF001`/`RUF002` (кириллические строки текста, это не латинские двойники) и
+`B008` для FastAPI-дефолтов через `flake8-bugbear.extend-immutable-calls`. Итог: `ruff check` чист,
+131 тест на SQLite и 133 теста на PostgreSQL проходят.
+
+**2. PostgreSQL/pgvector теперь действительно исполняется в CI.** Job `postgres-migrations` больше не
+ограничивается парой тестов: он прогоняет **весь** набор на `pgvector/pgvector:0.8.2-pg17` с
+`TEST_DATABASE_URL`, а перед этим проверяет, что URL — именно PostgreSQL (иначе pgvector-тесты молча
+скипаются и создают ложное чувство покрытия). Добавлены два теста в `tests/test_knowledge_service.py`:
+ранжирование по косинусному расстоянию (порядок меняется при смене вектора запроса) и проверка, что
+расстояние читается **одним** запросом, а не по одному `SELECT` на чанк.
+
+### Что нашлось сразу после запуска на PostgreSQL
+
+- **`notification_service._insert_notifications` падал на PostgreSQL с `AttributeError`.**
+  `insert(UserNotification).values(rows).on_conflict_do_nothing(...)` — метод есть только у
+  PostgreSQL-конструкции `sqlalchemy.dialects.postgresql.insert`, а не у generic `Insert`. То есть
+  формирование уведомлений (reminder/weather/telegram) было полностью неработоспособным в проде на
+  PostgreSQL. Теперь используется диалектный `insert`; заодно `rowcount` для батчевого insert с
+  `ON CONFLICT DO NOTHING` равен `-1`, поэтому количество созданных записей читается через `RETURNING`.
+  Это ровно тот класс дефекта, который «проверка компиляцией SQL» гарантированно пропускает.
+- **`requirements-dev.lock` был бит: у `uvloop==0.22.1` вместо хешей стояли заглушки
+  `--hash=sha256:5f6f...` и `--hash=sha256:...`.** Из-за этого `pip install --require-hashes` падал,
+  то есть job'ы `test` и `postgres-migrations` были красными ещё до всех правок по ревью. Хеши
+  переписаны по данным PyPI (полный набор wheel'ов 0.22.1), установка проверена для cp312.
 
 ---
 
@@ -82,7 +117,6 @@
 
 ## Покрытие и пробелы
 
-- 131 тест: 118 существовавших + 13 новых в `tests/test_hardening.py` (Redis-лимит, дедупликация, кэш погоды, заголовок logout, лимиты тела, HMAC-ключи партнёра, схемы вебхука).
+- 133 теста: 118 существовавших + 13 новых в `tests/test_hardening.py` (Redis-лимит, дедупликация, кэш погоды, заголовок logout, лимиты тела, HMAC-ключи партнёра, схемы вебхука) + 2 новых pgvector-теста в `tests/test_knowledge_service.py`.
 - E2E (Playwright) покрывает только путь садовода; админка, кабинет партнёра и инвойсы проверяются на уровне API.
-- PostgreSQL-ветка семантического поиска знаний не исполняется в CI (нужен pgvector) — проверена компиляцией SQL.
 - Локально недоступны `alembic check` и `pip-audit` (нужны PostgreSQL и Python 3.12) — это делает CI.

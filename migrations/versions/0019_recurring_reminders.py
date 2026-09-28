@@ -4,9 +4,8 @@ Revision ID: 0019_recurring_reminders
 Revises: 0018_object_storage
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0019_recurring_reminders"
 down_revision = "0018_object_storage"

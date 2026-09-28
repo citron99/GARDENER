@@ -4,9 +4,8 @@ Revision ID: 0020_email_security
 Revises: 0019_recurring_reminders
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0020_email_security"
 down_revision = "0019_recurring_reminders"

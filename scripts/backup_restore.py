@@ -14,7 +14,6 @@ from typing import Any
 import boto3
 from sqlalchemy.engine import make_url
 
-
 MANIFEST_SCHEMA_VERSION = 1
 
 

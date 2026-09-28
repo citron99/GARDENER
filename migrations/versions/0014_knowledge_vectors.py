@@ -1,11 +1,10 @@
 """Managed verified knowledge sources and vector chunks."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 from app.config import settings
 from app.vector import Vector
-
 
 revision = "0014_knowledge_vectors"
 down_revision = "0013_telegram"

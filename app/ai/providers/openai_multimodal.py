@@ -1,9 +1,9 @@
 import base64
-from collections.abc import Sequence
-from io import BytesIO
 import json
 import logging
 import time
+from collections.abc import Sequence
+from io import BytesIO
 from uuid import uuid4
 
 from PIL import Image, ImageStat, UnidentifiedImageError
@@ -14,7 +14,6 @@ from app.models import Plant, PlantPhoto
 from app.schemas import DiagnosisCreate, DiagnosisResult
 from app.services.knowledge_service import retrieve_knowledge
 from app.services.storage_service import StorageError, read_photo
-
 
 PROMPT_VERSION = "plant-diagnosis-v3"
 logger = logging.getLogger(__name__)

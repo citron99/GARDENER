@@ -1,10 +1,10 @@
 import json
 from types import SimpleNamespace
 
-from evals.run_evaluation import validate_dataset
+from app.schemas import DiagnosisResult, PossibleCause
 from evals.execute_evaluation import score_result
 from evals.report import build_report
-from app.schemas import DiagnosisResult, PossibleCause
+from evals.run_evaluation import validate_dataset
 
 
 def test_evaluation_gate_rejects_empty_or_unreviewed_dataset():

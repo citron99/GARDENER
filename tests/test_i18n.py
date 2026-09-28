@@ -1,7 +1,6 @@
+import re
 from html.parser import HTMLParser
 from pathlib import Path
-import re
-
 
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 QUOTED_KEY = re.compile(r'"((?:\\.|[^"\\])*)"\s*:')

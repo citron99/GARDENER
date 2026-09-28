@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
@@ -126,12 +126,12 @@ def verify_stripe_signature(payload: bytes, signature_header: str | None, now: i
 def _unix_datetime(value) -> datetime | None:
     if not isinstance(value, (int, float)):
         return None
-    return datetime.fromtimestamp(value, timezone.utc)
+    return datetime.fromtimestamp(value, UTC)
 
 
 def _utc(value: datetime | None) -> datetime | None:
     if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=UTC)
     return value
 
 

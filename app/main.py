@@ -1,65 +1,131 @@
-from contextlib import asynccontextmanager
-from datetime import datetime, time as datetime_time, timedelta, timezone
 import hmac
 import json
 import logging
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from datetime import time as datetime_time
 from pathlib import Path
-from uuid import uuid4
 from time import perf_counter
+from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.ai import create_ai_gateway
-from app.auth import (create_token_pair, get_admin_user, get_current_user, hash_password,
-                      revoke_refresh_token, rotate_refresh_token, verify_password)
-from app.config import settings, validate_runtime_settings
-from app.i18n import normalize_language, translate_http_error
-from app.catalog import public_router as public_catalog_router, router as catalog_router
-from app.billing import router as billing_router
-from app.telegram import router as telegram_router
-from app.database import engine, get_db
-from app.models import (AIRequestLog, AdminAuditLog, AuthSession, CareEvent, Diagnosis, DiagnosisAnswer, DiagnosisFeedback,
-                        DiagnosisJob, DiagnosisQuestion, DiagnosisRevision, Garden, Plant, PlantPhoto,
-                        KnowledgeSourceRecord, Partner, PartnerInvoice, Product, ProductLead, Reminder, Subscription,
-                        TelegramAccount, TelegramUpdate, User, UserNotification)
-from app.schemas import (AdminAIRequestRead, AdminAuditLogRead, AdminJobSummaryRead, AdminOverviewRead,
-                         AdminUserSummaryRead, CalendarItemRead, CareEventCreate, CareEventRead, CareEventUpdate,
-                         DiagnosisAnswersCreate,
-                         DiagnosisCreate, DiagnosisFeedbackCreate, DiagnosisJobRead,
-                         DiagnosisFeedbackRead, DiagnosisQuestionRead, DiagnosisRead,
-                         GardenCreate, GardenRead, GardenUpdate, LoginRequest,
-                         KnowledgeSourceAdminRead, KnowledgeSourceUpsert, KnowledgeSyncRead,
-                         NotificationRead, PhotoRead, PlantCreate, PlantHistoryRead, PlantRead, PlantUpdate,
-                         ReminderCreate, ReminderRead, ReminderUpdate,
-                         AccountDeleteRequest, ActionTokenRequest, EmailVerificationRequest,
-                         PasswordResetConfirm, RefreshTokenRequest, TokenRead, UserProfileUpdate,
-                         UserRead, UserRegister, WeatherForecastRead)
-from app.services.image_service import ImageValidationError, SanitizedImage, validate_and_sanitize_image
-from app.services.knowledge_service import KnowledgeSource, create_embedding_provider, sync_builtin_knowledge, upsert_knowledge_source
-from app.services.seasonal_service import seasonal_calendar_items
-from app.services.weather_service import WeatherServiceError, weather_service
-from app.services.rate_limit_service import enforce_auth_rate_limit, enforce_rate_limit
-from app.services.storage_service import (StorageError, delete_photo, photo_download,
-                                          store_photo)
-from app.services.storage_outbox_service import enqueue_photo_deletions, process_storage_deletion_outbox
-from app.services.account_deletion_service import (
-    mark_cancellation_requested, mark_cancellation_retry, stage_account_deletion,
+from app.auth import (
+    create_token_pair,
+    get_admin_user,
+    get_current_user,
+    hash_password,
+    revoke_refresh_token,
+    rotate_refresh_token,
+    verify_password,
 )
-from app.services.billing_service import BillingProviderError, cancel_stripe_subscription
-from app.services.account_security_service import (consume_action_token, issue_action_token,
-                                                   send_action_email)
-from app.services.metrics_service import (render_metrics, request_finished, request_started,
-                                          unhandled_error)
+from app.billing import router as billing_router
+from app.catalog import public_router as public_catalog_router
+from app.catalog import router as catalog_router
+from app.config import settings, validate_runtime_settings
+from app.database import engine, get_db
+from app.i18n import normalize_language, translate_http_error
+from app.models import (
+    AdminAuditLog,
+    AIRequestLog,
+    AuthSession,
+    CareEvent,
+    Diagnosis,
+    DiagnosisAnswer,
+    DiagnosisFeedback,
+    DiagnosisJob,
+    DiagnosisQuestion,
+    DiagnosisRevision,
+    Garden,
+    KnowledgeSourceRecord,
+    Partner,
+    PartnerInvoice,
+    Plant,
+    PlantPhoto,
+    Product,
+    ProductLead,
+    Reminder,
+    Subscription,
+    TelegramAccount,
+    TelegramUpdate,
+    User,
+    UserNotification,
+)
+from app.schemas import (
+    AccountDeleteRequest,
+    ActionTokenRequest,
+    AdminAIRequestRead,
+    AdminAuditLogRead,
+    AdminJobSummaryRead,
+    AdminOverviewRead,
+    AdminUserSummaryRead,
+    CalendarItemRead,
+    CareEventCreate,
+    CareEventRead,
+    CareEventUpdate,
+    DiagnosisAnswersCreate,
+    DiagnosisCreate,
+    DiagnosisFeedbackCreate,
+    DiagnosisFeedbackRead,
+    DiagnosisJobRead,
+    DiagnosisQuestionRead,
+    DiagnosisRead,
+    EmailVerificationRequest,
+    GardenCreate,
+    GardenRead,
+    GardenUpdate,
+    KnowledgeSourceAdminRead,
+    KnowledgeSourceUpsert,
+    KnowledgeSyncRead,
+    LoginRequest,
+    NotificationRead,
+    PasswordResetConfirm,
+    PhotoRead,
+    PlantCreate,
+    PlantHistoryRead,
+    PlantRead,
+    PlantUpdate,
+    RefreshTokenRequest,
+    ReminderCreate,
+    ReminderRead,
+    ReminderUpdate,
+    TokenRead,
+    UserProfileUpdate,
+    UserRead,
+    UserRegister,
+    WeatherForecastRead,
+)
+from app.services.account_deletion_service import (
+    mark_cancellation_requested,
+    mark_cancellation_retry,
+    stage_account_deletion,
+)
+from app.services.account_security_service import consume_action_token, issue_action_token, send_action_email
 from app.services.alert_service import dispatch_operational_alert
+from app.services.billing_service import BillingProviderError, cancel_stripe_subscription
+from app.services.image_service import ImageValidationError, SanitizedImage, validate_and_sanitize_image
+from app.services.knowledge_service import (
+    KnowledgeSource,
+    create_embedding_provider,
+    sync_builtin_knowledge,
+    upsert_knowledge_source,
+)
+from app.services.metrics_service import render_metrics, request_finished, request_started, unhandled_error
+from app.services.rate_limit_service import enforce_auth_rate_limit, enforce_rate_limit
+from app.services.seasonal_service import seasonal_calendar_items
+from app.services.storage_outbox_service import enqueue_photo_deletions, process_storage_deletion_outbox
+from app.services.storage_service import StorageError, delete_photo, photo_download, store_photo
+from app.services.weather_service import WeatherServiceError, weather_service
 from app.task_queue import dispatch_diagnosis_job
-from sqlalchemy.exc import IntegrityError
-
+from app.telegram import router as telegram_router
 
 ai_gateway = create_ai_gateway(settings.ai_provider)
 web_dir = Path(__file__).resolve().parents[1] / "web"
@@ -298,8 +364,8 @@ def readiness() -> dict:
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-            from alembic.migration import MigrationContext
             from alembic.config import Config
+            from alembic.migration import MigrationContext
             from alembic.script import ScriptDirectory
 
             current = MigrationContext.configure(connection).get_current_revision()
@@ -315,6 +381,7 @@ def readiness() -> dict:
     if settings.diagnosis_execution_mode == "celery":
         try:
             from redis import Redis
+
             from app.tasks import celery_app
 
             Redis.from_url(settings.celery_broker_url, socket_connect_timeout=1, socket_timeout=1).ping()
@@ -383,13 +450,13 @@ def register(
         raise HTTPException(409, "Пользователь с таким email уже зарегистрирован")
     user = User(email=email, name=payload.name, password_hash=hash_password(payload.password),
                 language=payload.language, region=payload.region,
-                email_verified_at=(datetime.now(timezone.utc) if settings.environment == "test" else None))
+                email_verified_at=(datetime.now(UTC) if settings.environment == "test" else None))
     db.add(user)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Пользователь с таким email уже зарегистрирован")
+        raise HTTPException(409, "Пользователь с таким email уже зарегистрирован") from exc
     db.refresh(user)
     pair = create_token_pair(user, db)
     _set_refresh_cookie(response, pair.refresh_token)
@@ -477,7 +544,7 @@ def confirm_email_verification(payload: ActionTokenRequest, db: Session = Depend
     user = consume_action_token(db, payload.token, "verify_email")
     if not user:
         raise HTTPException(400, "Ссылка подтверждения недействительна или устарела")
-    user.email_verified_at = datetime.now(timezone.utc)
+    user.email_verified_at = datetime.now(UTC)
     db.commit()
     return {"verified": True}
 
@@ -506,7 +573,7 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
         raise HTTPException(400, "Ссылка восстановления недействительна или устарела")
     user.password_hash = hash_password(payload.new_password)
     db.query(AuthSession).filter(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None)).update(
-        {AuthSession.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+        {AuthSession.revoked_at: datetime.now(UTC)}, synchronize_session=False)
     db.commit()
     return {"password_reset": True}
 
@@ -566,7 +633,7 @@ def export_account_data(user: User = Depends(get_current_user), db: Session = De
         select(ProductLead).where(ProductLead.user_id == user.id).order_by(ProductLead.id)
     ))
     return {
-        "exported_at": datetime.now(timezone.utc),
+        "exported_at": datetime.now(UTC),
         "user": {"id": user.id, "email": user.email, "name": user.name, "language": user.language,
                  "region": user.region, "created_at": user.created_at},
         "gardens": [{column.name: getattr(item, column.name) for column in Garden.__table__.columns
@@ -693,7 +760,7 @@ def set_user_blocked(
     target.is_blocked = blocked
     if blocked:
         db.query(AuthSession).filter(AuthSession.user_id == target.id, AuthSession.revoked_at.is_(None)).update(
-            {AuthSession.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+            {AuthSession.revoked_at: datetime.now(UTC)}, synchronize_session=False)
     db.add(AdminAuditLog(
         admin_user_id=admin.id,
         action="user.block" if blocked else "user.unblock",
@@ -879,9 +946,9 @@ def admin_upsert_knowledge_source(
     source = KnowledgeSource.model_validate(payload.model_dump(exclude={"active"}))
     try:
         item = upsert_knowledge_source(db, source, active=payload.active)
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Источник с таким URL уже существует")
+        raise HTTPException(409, "Источник с таким URL уже существует") from exc
     except Exception as exc:
         db.rollback()
         logger.exception("knowledge source embedding failed")
@@ -914,9 +981,9 @@ def create_garden(payload: GardenCreate, user: User = Depends(get_current_user),
     db.add(garden)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Сад с таким названием уже существует")
+        raise HTTPException(409, "Сад с таким названием уже существует") from exc
     db.refresh(garden)
     return garden
 
@@ -955,9 +1022,9 @@ def update_garden(
         setattr(garden, field, value)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Сад с таким названием уже существует")
+        raise HTTPException(409, "Сад с таким названием уже существует") from exc
     db.refresh(garden)
     return garden
 
@@ -1084,7 +1151,7 @@ def _owned_reminder(reminder_id: int, user: User, db: Session) -> Reminder:
 
 
 def _aware_utc(value: datetime) -> datetime:
-    return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).astimezone(timezone.utc)
+    return (value.replace(tzinfo=UTC) if value.tzinfo is None else value).astimezone(UTC)
 
 
 def _next_reminder_occurrence(due_at: datetime, recurrence: str, timezone_name: str) -> datetime:
@@ -1092,12 +1159,12 @@ def _next_reminder_occurrence(due_at: datetime, recurrence: str, timezone_name: 
     local = _aware_utc(due_at).astimezone(zone)
     if recurrence in {"daily", "weekly"}:
         days = 1 if recurrence == "daily" else 7
-        return (local + timedelta(days=days)).astimezone(timezone.utc)
+        return (local + timedelta(days=days)).astimezone(UTC)
     year = local.year + (1 if local.month == 12 else 0)
     month = 1 if local.month == 12 else local.month + 1
     from calendar import monthrange
     day = min(local.day, monthrange(year, month)[1])
-    return local.replace(year=year, month=month, day=day).astimezone(timezone.utc)
+    return local.replace(year=year, month=month, day=day).astimezone(UTC)
 
 
 @app.post("/api/v1/plants/{plant_id}/care-events", response_model=CareEventRead, status_code=201)
@@ -1109,7 +1176,7 @@ def create_care_event(
 ) -> CareEvent:
     _owned_plant(plant_id, user, db)
     values = payload.model_dump()
-    values["occurred_at"] = payload.occurred_at.astimezone(timezone.utc)
+    values["occurred_at"] = payload.occurred_at.astimezone(UTC)
     event = CareEvent(plant_id=plant_id, **values)
     db.add(event)
     db.commit()
@@ -1147,7 +1214,7 @@ def update_care_event(
     event = _owned_care_event(event_id, user, db)
     changes = payload.model_dump(exclude_unset=True)
     if changes.get("occurred_at") is not None:
-        changes["occurred_at"] = changes["occurred_at"].astimezone(timezone.utc)
+        changes["occurred_at"] = changes["occurred_at"].astimezone(UTC)
     resulting_amount = changes.get("amount", event.amount)
     resulting_unit = changes.get("unit", event.unit)
     if resulting_unit and resulting_amount is None:
@@ -1180,7 +1247,7 @@ def create_reminder(
 ) -> Reminder:
     _owned_plant(plant_id, user, db)
     values = payload.model_dump()
-    values["due_at"] = payload.due_at.astimezone(timezone.utc)
+    values["due_at"] = payload.due_at.astimezone(UTC)
     reminder = Reminder(plant_id=plant_id, **values)
     db.add(reminder)
     db.commit()
@@ -1217,7 +1284,7 @@ def update_reminder(
     snooze_minutes = changes.pop("snooze_minutes", None)
     skip_occurrence = changes.pop("skip_occurrence", None)
     if changes.get("due_at") is not None:
-        changes["due_at"] = changes["due_at"].astimezone(timezone.utc)
+        changes["due_at"] = changes["due_at"].astimezone(UTC)
     for field, value in changes.items():
         setattr(reminder, field, value)
     if snooze_minutes is not None:
@@ -1227,7 +1294,7 @@ def update_reminder(
         completed = True
     if completed is not None:
         was_completed = reminder.completed_at is not None
-        reminder.completed_at = datetime.now(timezone.utc) if completed else None
+        reminder.completed_at = datetime.now(UTC) if completed else None
         if completed and not was_completed and reminder.recurrence:
             db.add(Reminder(
                 plant_id=reminder.plant_id,
@@ -1268,8 +1335,8 @@ def calendar_items(
 ) -> list[dict]:
     if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
         raise HTTPException(422, "Период календаря должен включать часовой пояс")
-    start_utc = start.astimezone(timezone.utc)
-    end_utc = end.astimezone(timezone.utc)
+    start_utc = start.astimezone(UTC)
+    end_utc = end.astimezone(UTC)
     if start_utc >= end_utc:
         raise HTTPException(422, "Начало периода должно быть раньше окончания")
     if end_utc - start_utc > timedelta(days=366):
@@ -1329,10 +1396,10 @@ def calendar_items(
             try:
                 forecast_timezone = ZoneInfo(forecast.timezone)
             except ZoneInfoNotFoundError:
-                forecast_timezone = timezone.utc
+                forecast_timezone = UTC
             for warning in forecast.warnings:
                 warning_at = datetime.combine(warning.date, datetime_time(hour=9), tzinfo=forecast_timezone)
-                warning_utc = warning_at.astimezone(timezone.utc)
+                warning_utc = warning_at.astimezone(UTC)
                 if start_utc <= warning_utc < end_utc:
                     items.append({
                         "item_type": "weather_warning",
@@ -1352,8 +1419,8 @@ def calendar_items(
     def sort_time(item: dict) -> datetime:
         value = item["starts_at"]
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     return sorted(items, key=sort_time)
 
@@ -1383,7 +1450,7 @@ def mark_notification_read(
         UserNotification.id == notification_id, UserNotification.user_id == user.id))
     if not item:
         raise HTTPException(404, "Уведомление не найдено")
-    item.read_at = datetime.now(timezone.utc)
+    item.read_at = datetime.now(UTC)
     db.commit()
     db.refresh(item)
     return item
@@ -1412,7 +1479,7 @@ async def upload_photos(plant_id: int, files: list[UploadFile] = File(...), user
         try:
             prepared.append(validate_and_sanitize_image(content, upload.content_type))
         except ImageValidationError as exc:
-            raise HTTPException(exc.status_code, exc.detail)
+            raise HTTPException(exc.status_code, exc.detail) from exc
 
     used_storage = db.scalar(
         select(func.coalesce(func.sum(PlantPhoto.size_bytes), 0))
@@ -1469,15 +1536,15 @@ def _create_and_dispatch_diagnosis_job(payload: DiagnosisCreate, user: User, db:
     db.commit()
     try:
         dispatch_diagnosis_job(job.id, gateway=ai_gateway)
-    except Exception:
+    except Exception as exc:
         logger.exception("Could not dispatch diagnosis job", extra={"job_id": job.id})
         db.refresh(job)
         job.status = "failed"
         job.error_type = "queue_unavailable"
         job.error_message = "Очередь диагностики временно недоступна"
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
         db.commit()
-        raise HTTPException(503, "Очередь диагностики временно недоступна")
+        raise HTTPException(503, "Очередь диагностики временно недоступна") from exc
     db.expire_all()
     return db.get(DiagnosisJob, job.id)
 
@@ -1528,8 +1595,8 @@ def _enforce_monthly_diagnosis_quota(user: User, db: Session) -> None:
     # PostgreSQL сериализует конкурентные запросы одного пользователя; SQLite
     # игнорирует FOR UPDATE, что приемлемо только для локальной разработки.
     db.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
-    now = datetime.now(timezone.utc)
-    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    now = datetime.now(UTC)
+    month_start = datetime(now.year, now.month, 1, tzinfo=UTC)
     used = db.scalar(
         select(func.count(DiagnosisJob.id)).where(
             DiagnosisJob.user_id == user.id,
@@ -1586,16 +1653,16 @@ def _queue_reanalysis_job(
     db.commit()
     try:
         dispatch_diagnosis_job(job.id, gateway=ai_gateway)
-    except Exception:
+    except Exception as exc:
         logger.exception("Could not dispatch reanalysis job", extra={"job_id": job.id})
         db.expire_all()
         failed = db.get(DiagnosisJob, job.id)
         failed.status = "failed"
         failed.error_type = "queue_unavailable"
         failed.error_message = "Очередь диагностики временно недоступна"
-        failed.completed_at = datetime.now(timezone.utc)
+        failed.completed_at = datetime.now(UTC)
         db.commit()
-        raise HTTPException(503, "Очередь диагностики временно недоступна")
+        raise HTTPException(503, "Очередь диагностики временно недоступна") from exc
     db.expire_all()
     return db.get(DiagnosisJob, job.id)
 
@@ -1678,8 +1745,8 @@ def get_photo(photo_id: int, user: User = Depends(get_current_user), db: Session
         raise HTTPException(404, "Фотография не найдена")
     try:
         target = photo_download(photo)
-    except StorageError:
-        raise HTTPException(404, "Файл фотографии не найден")
+    except StorageError as exc:
+        raise HTTPException(404, "Файл фотографии не найден") from exc
     if isinstance(target, str):
         return RedirectResponse(target, status_code=307, headers={"Cache-Control": "private, no-store"})
     return FileResponse(

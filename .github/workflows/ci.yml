@@ -18,7 +18,7 @@ jobs:
         run: |
           pip-audit -r requirements.lock
           pip-audit -r requirements-dev.lock
-      - run: ruff check app tests migrations evals
+      - run: ruff check app tests migrations evals scripts
       - run: pytest -q
 
   browser-e2e:
@@ -101,7 +101,19 @@ jobs:
           alembic upgrade head
           alembic check
           alembic downgrade base
-      - name: PostgreSQL lease concurrency and recovery tests
+      - name: Fail fast if the test database is not PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://gardener:test-password@127.0.0.1:5432/gardener_test
+        run: |
+          python - <<'PY'
+          import os
+
+          import sqlalchemy
+
+          url = os.environ["TEST_DATABASE_URL"]
+          assert sqlalchemy.create_engine(url).dialect.name == "postgresql", url
+          PY
+      - name: Run the whole suite against PostgreSQL/pgvector
         env:
           TEST_DATABASE_URL: postgresql+psycopg://gardener:test-password@127.0.0.1:5432/gardener_test
           JWT_SECRET: ci-random-jwt-secret-that-is-longer-than-thirty-two
@@ -109,7 +121,6 @@ jobs:
           PARTNER_ATTRIBUTION_SECRET: ci-random-partner-secret-that-is-longer-than-thirty-two
           AI_PROVIDER: mock
           ENVIRONMENT: test
-        run: >-
-          pytest -q
-          tests/test_api.py::test_diagnosis_job_lease_prevents_two_paid_ai_calls
-          tests/test_maintenance.py::test_recovery_reserves_expired_and_orphaned_jobs_and_fails_exhausted_attempts
+        # -rs prints skip reasons: the pgvector retrieval tests must run here,
+        # not silently skip, or the PostgreSQL-only branches stay untested.
+        run: pytest -q -rs

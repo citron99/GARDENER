@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ def process_storage_deletion_outbox(
     now: datetime | None = None,
     limit: int = 100,
 ) -> dict[str, int]:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     items = list(db.scalars(
         select(StorageDeletionOutbox)
         .where(

@@ -2,9 +2,9 @@
 
 import atexit
 import os
-from pathlib import Path
 import shutil
 import tempfile
+from pathlib import Path
 
 test_root = Path(tempfile.mkdtemp(prefix="ai-garden-pytest-"))
 test_db_path = test_root / "gardener.db"
@@ -30,9 +30,9 @@ from fastapi.testclient import TestClient
 
 from app.database import Base, engine
 from app.main import app
-from app.services.rate_limit_service import reset_local_rate_limits
-from app.services.metrics_service import reset_metrics
 from app.services.alert_service import reset_alert_rate_limits
+from app.services.metrics_service import reset_metrics
+from app.services.rate_limit_service import reset_local_rate_limits
 
 
 def _remove_sqlite_files() -> None:

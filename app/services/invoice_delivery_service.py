@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 
@@ -50,7 +50,7 @@ def process_invoice_delivery(delivery_id: int) -> str | None:
             if delivery and delivery.status == "sending":
                 delivery.status = "failed"
                 delivery.error_type = type(exc).__name__[:120]
-                delivery.completed_at = datetime.now(timezone.utc)
+                delivery.completed_at = datetime.now(UTC)
                 db.add(
                     AdminAuditLog(
                         admin_user_id=delivery.requested_by_admin_id,
@@ -71,7 +71,7 @@ def process_invoice_delivery(delivery_id: int) -> str | None:
         if not delivery or delivery.status != "sending":
             return None
         delivery.status = final_status
-        delivery.completed_at = datetime.now(timezone.utc)
+        delivery.completed_at = datetime.now(UTC)
         db.add(
             AdminAuditLog(
                 admin_user_id=admin_id,
@@ -101,7 +101,7 @@ def dispatch_invoice_delivery(delivery_id: int) -> str | None:
 
 def pending_invoice_delivery_ids(*, limit: int = 100) -> list[int]:
     """Return persisted outbox records for safe periodic republishing."""
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    cutoff = datetime.now(UTC) - timedelta(seconds=30)
     with SessionLocal() as db:
         return list(
             db.scalars(
@@ -117,7 +117,7 @@ def pending_invoice_delivery_ids(*, limit: int = 100) -> list[int]:
 
 
 def mark_stale_invoice_deliveries_unknown(*, limit: int = 100) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+    cutoff = datetime.now(UTC) - timedelta(minutes=15)
     with SessionLocal() as db:
         stale_ids = list(
             db.scalars(
@@ -141,7 +141,7 @@ def mark_stale_invoice_deliveries_unknown(*, limit: int = 100) -> int:
             .values(
                 status="unknown",
                 error_type="DeliveryWorkerInterrupted",
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
         )
         db.commit()

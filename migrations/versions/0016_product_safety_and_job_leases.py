@@ -4,9 +4,8 @@ Revision ID: 0016
 Revises: 0015
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0016_product_safety_and_job_leases"
 down_revision = "0015_notifications"

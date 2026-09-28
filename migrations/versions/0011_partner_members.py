@@ -1,8 +1,7 @@
 """Partner staff accounts and isolated cabinet access."""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0011_partner_members"
 down_revision = "0010_partner_catalog"

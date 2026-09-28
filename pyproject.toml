@@ -5,9 +5,36 @@ line-length = 120
 extend-exclude = [".venv", "uploads", "playwright-report"]
 
 [tool.ruff.lint]
-# The rules CI enforces today. Widening this set (I, B, UP, SIM) should be a
-# deliberate follow-up so the change stays reviewable.
-select = ["E4", "E7", "E9", "F"]
+select = [
+    "E4", "E7", "E9",  # pycodestyle errors that catch real bugs
+    "F",               # pyflakes
+    "I",               # import sorting
+    "B",               # bugbear: mutable defaults, missing `from`, swallowed errors
+    "C4",              # comprehensions
+    "SIM",             # simplifications
+    "UP",              # pyupgrade
+    "RUF",             # ruff-specific rules
+]
+ignore = [
+    # The UI and API messages are written in Russian, so look-alike Cyrillic
+    # characters are intentional rather than ambiguous.
+    "RUF001",
+    "RUF002",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI resolves these at request time; they are dependency markers, not
+# mutable default values.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.File",
+    "fastapi.Body",
+    "fastapi.Form",
+    "fastapi.Cookie",
+]
 
 [tool.ruff.format]
 quote-style = "double"

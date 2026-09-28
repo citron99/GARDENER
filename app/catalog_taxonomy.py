@@ -6,7 +6,6 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-
 _COUNTRY_ALIASES = {
     "latvia": "LV",
     "latvija": "LV",

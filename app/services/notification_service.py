@@ -1,7 +1,8 @@
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import insert, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
 from app.models import Garden, Plant, Reminder, TelegramAccount, User, UserNotification
@@ -11,7 +12,7 @@ from app.services.weather_service import WeatherServiceError, weather_service
 
 
 def _aware(value: datetime) -> datetime:
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 _KEY_LOOKUP_CHUNK = 500
@@ -38,7 +39,7 @@ def _add(
         "kind": kind,
         "title": title,
         "body": body,
-        "event_at": _aware(event_at).astimezone(timezone.utc),
+        "event_at": _aware(event_at).astimezone(UTC),
         "deduplication_key": key,
         "delivery_channel": delivery_channel,
     })
@@ -63,13 +64,15 @@ def _insert_notifications(db: Session, rows: list[dict]) -> int:
     """Insert staged notifications, tolerating duplicates from a concurrent run."""
     if not rows:
         return 0
-    statement = insert(UserNotification).values(rows)
     if db.bind is not None and db.bind.dialect.name == "postgresql":
-        statement = statement.on_conflict_do_nothing(
+        # `ON CONFLICT DO NOTHING` only exists on the PostgreSQL insert construct,
+        # and the driver reports no rowcount for a batched insert, so the
+        # inserted ids are read back instead of trusting `rowcount`.
+        statement = postgresql_insert(UserNotification).values(rows).on_conflict_do_nothing(
             index_elements=["deduplication_key"]
-        )
-    else:
-        statement = statement.prefix_with("OR IGNORE")
+        ).returning(UserNotification.id)
+        return len(db.execute(statement).scalars().all())
+    statement = insert(UserNotification).values(rows).prefix_with("OR IGNORE")
     return int(db.execute(statement).rowcount or 0)
 
 
@@ -79,7 +82,7 @@ def generate_due_notifications(
     now: datetime | None = None,
     include_weather: bool = True,
 ) -> int:
-    now = _aware(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    now = _aware(now or datetime.now(UTC)).astimezone(UTC)
     end = now + timedelta(hours=24)
     pending: list[dict] = []
     seen: set[str] = set()
@@ -125,9 +128,9 @@ def generate_due_notifications(
             try:
                 zone = ZoneInfo(forecast.timezone)
             except ZoneInfoNotFoundError:
-                zone = timezone.utc
+                zone = UTC
             for warning in forecast.warnings:
-                event_at = datetime.combine(warning.date, time(hour=9), tzinfo=zone).astimezone(timezone.utc)
+                event_at = datetime.combine(warning.date, time(hour=9), tzinfo=zone).astimezone(UTC)
                 if now <= event_at < end:
                     _add(
                         pending, seen, user_id=user.id, kind="weather_warning", title=warning.title,
@@ -144,7 +147,7 @@ def generate_due_notifications(
 
 
 def deliver_pending_telegram_notifications(db: Session, *, now: datetime | None = None) -> tuple[int, int]:
-    now = _aware(now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    now = _aware(now or datetime.now(UTC)).astimezone(UTC)
     rows = db.execute(
         select(UserNotification, TelegramAccount)
         .join(TelegramAccount, TelegramAccount.user_id == UserNotification.user_id)

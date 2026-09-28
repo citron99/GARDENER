@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import (
-    AIRequestLog,
     AccountActionToken,
+    AIRequestLog,
     AuthSession,
     BillingEvent,
     DiagnosisJob,
@@ -22,7 +22,7 @@ from app.services.maintenance_service import cleanup_expired_records, recover_st
 
 
 def test_cleanup_removes_only_expired_operational_records():
-    now = datetime(2026, 7, 14, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 14, 12, tzinfo=UTC)
     old = now - timedelta(days=400)
     future = now + timedelta(days=30)
 
@@ -148,7 +148,7 @@ def test_cleanup_removes_only_expired_operational_records():
 
 
 def test_recovery_reserves_expired_and_orphaned_jobs_and_fails_exhausted_attempts():
-    now = datetime(2026, 7, 15, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 15, 12, tzinfo=UTC)
     old = now - timedelta(hours=1)
     future = now + timedelta(hours=1)
     with SessionLocal() as db:

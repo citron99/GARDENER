@@ -1,6 +1,6 @@
 import hashlib
 import secrets
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -20,7 +20,7 @@ def _token_hash(code: str) -> str:
 
 
 def create_link_code(db: Session, user: User) -> tuple[str, datetime]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db.execute(
         update(TelegramLinkToken)
         .where(TelegramLinkToken.user_id == user.id, TelegramLinkToken.used_at.is_(None))
@@ -54,7 +54,7 @@ def consume_link_code(
     username: str | None,
     language: str | None,
 ) -> User | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     token = db.scalar(select(TelegramLinkToken).where(
         TelegramLinkToken.token_hash == _token_hash(code),
         TelegramLinkToken.used_at.is_(None),
@@ -115,7 +115,7 @@ def _plants(db: Session, user_id: int, language: str) -> str:
 def _today(db: Session, user_id: int, language: str) -> str:
     zone = ZoneInfo(settings.telegram_timezone)
     local_now = datetime.now(zone)
-    start = datetime.combine(local_now.date(), time.min, tzinfo=zone).astimezone(timezone.utc)
+    start = datetime.combine(local_now.date(), time.min, tzinfo=zone).astimezone(UTC)
     end = start + timedelta(days=1)
     rows = db.execute(
         select(Reminder, Plant.name)
@@ -136,7 +136,7 @@ def _today(db: Session, user_id: int, language: str) -> str:
     for reminder, plant_name in rows:
         due = reminder.due_at
         if due.tzinfo is None:
-            due = due.replace(tzinfo=timezone.utc)
+            due = due.replace(tzinfo=UTC)
         lines.append(f"• {due.astimezone(zone):%H:%M} · {plant_name} · {reminder.title}")
     return heading + "\n" + "\n".join(lines)
 

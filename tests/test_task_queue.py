@@ -1,5 +1,5 @@
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from datetime import date, datetime, timedelta, timezone
 
 from app.config import settings
 from app.database import SessionLocal
@@ -40,7 +40,7 @@ def test_invoice_delivery_claim_prevents_duplicate_email(monkeypatch):
             partner_id=partner.id,
             period_start=date(2026, 8, 1),
             period_end=date(2026, 8, 31),
-            due_at=datetime.now(timezone.utc) + timedelta(days=14),
+            due_at=datetime.now(UTC) + timedelta(days=14),
             customer_snapshot={"email": "billing@example.test"},
         )
         db.add(invoice)

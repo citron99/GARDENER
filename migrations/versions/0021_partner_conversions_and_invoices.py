@@ -4,9 +4,8 @@ Revision ID: 0021_partner_billing
 Revises: 0020_email_security
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0021_partner_billing"
 down_revision = "0020_email_security"

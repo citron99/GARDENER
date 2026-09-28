@@ -1,8 +1,9 @@
-from datetime import date, datetime, timedelta, timezone
+import contextlib
 import csv
-from io import StringIO
 import re
 import secrets
+from datetime import UTC, date, datetime, timedelta
+from io import StringIO
 from uuid import uuid4
 
 from fastapi import (
@@ -16,10 +17,10 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import RedirectResponse
+from pydantic import ValidationError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from pydantic import ValidationError
 
 from app.auth import get_admin_user, get_current_user
 from app.catalog_taxonomy import (
@@ -38,9 +39,9 @@ from app.models import (
     PartnerInvoice,
     PartnerInvoiceDelivery,
     PartnerMember,
+    PartnerPayment,
     Plant,
     Product,
-    PartnerPayment,
     ProductLead,
     ProductRecommendationRule,
     RegulatedProductRegistration,
@@ -55,7 +56,6 @@ from app.schemas import (
     PartnerAccountRead,
     PartnerConversionClaim,
     PartnerConversionPostback,
-    PartnerPostbackKeyRead,
     PartnerCreate,
     PartnerInvoiceCreate,
     PartnerInvoiceDeliveryRead,
@@ -63,14 +63,15 @@ from app.schemas import (
     PartnerInvoiceSend,
     PartnerInvoiceStatusUpdate,
     PartnerLeadRead,
+    PartnerManualPaymentCreate,
     PartnerMemberAssign,
     PartnerMemberRead,
     PartnerOverviewRead,
-    PartnerManualPaymentCreate,
     PartnerPaymentImport,
     PartnerPaymentImportRead,
     PartnerPaymentRead,
     PartnerPaymentResolve,
+    PartnerPostbackKeyRead,
     PartnerProductCreate,
     PartnerRead,
     PartnerUpdate,
@@ -86,7 +87,7 @@ from app.schemas import (
     RegistrationSnapshotImport,
     RegulatedProductRegistrationRead,
 )
-from app.services.product_registry_service import import_registration_snapshot
+from app.services.invoice_delivery_service import dispatch_invoice_delivery
 from app.services.invoice_service import (
     CANCELLATION_DOCUMENT_VERSION,
     DOCUMENT_VERSION,
@@ -94,14 +95,13 @@ from app.services.invoice_service import (
     build_invoice_snapshots,
     cancellation_snapshot_sha256,
     document_sha256,
-    invoice_snapshot_sha256,
     invoice_pdf_generator_version,
+    invoice_snapshot_sha256,
     load_verified_invoice_cancellation_pdf,
     load_verified_invoice_pdf,
     render_invoice_cancellation_pdf,
     render_invoice_pdf,
 )
-from app.services.invoice_delivery_service import dispatch_invoice_delivery
 from app.services.partner_attribution_service import (
     AttributionTokenError,
     add_click_id,
@@ -111,11 +111,11 @@ from app.services.partner_attribution_service import (
     verify_click_token,
     verify_partner_key,
 )
+from app.services.product_registry_service import import_registration_snapshot
 from app.services.storage_service import (
     StorageError,
     store_private_document,
 )
-
 
 router = APIRouter(prefix="/api/v1")
 public_router = APIRouter()
@@ -453,7 +453,7 @@ def product_redirect(
     if not row:
         raise HTTPException(404, "Переход недействителен или устарел")
     lead, product, _partner = row
-    lead.redirected_at = datetime.now(timezone.utc)
+    lead.redirected_at = datetime.now(UTC)
     lead.redirect_count = (lead.redirect_count or 0) + 1
     db.commit()
     return RedirectResponse(
@@ -511,7 +511,7 @@ def partner_conversion_postback(
     lead.status = "conversion_claimed"
     lead.partner_reference = payload.partner_reference
     lead.conversion_value_cents = payload.conversion_value_cents
-    lead.claimed_at = datetime.now(timezone.utc)
+    lead.claimed_at = datetime.now(UTC)
     lead.confirmed_at = None
     lead.rejected_at = None
     lead.review_note = None
@@ -519,9 +519,9 @@ def partner_conversion_postback(
     lead.billable_amount_cents = 0
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Такая ссылка на продажу уже использована для товара")
+        raise HTTPException(409, "Такая ссылка на продажу уже использована для товара") from exc
     db.refresh(lead)
     return {
         "id": lead.id,
@@ -631,9 +631,9 @@ def create_partner(
     db.add(partner)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Партнёр с таким названием уже существует")
+        raise HTTPException(409, "Партнёр с таким названием уже существует") from exc
     db.refresh(partner)
     return partner
 
@@ -652,9 +652,9 @@ def update_partner(
         setattr(partner, field, value)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Партнёр с таким названием уже существует")
+        raise HTTPException(409, "Партнёр с таким названием уже существует") from exc
     db.refresh(partner)
     return partner
 
@@ -705,14 +705,14 @@ def create_product(
     product = Product(
         **payload.model_dump(mode="json"),
         moderation_status="approved",
-        moderated_at=datetime.now(timezone.utc),
+        moderated_at=datetime.now(UTC),
     )
     db.add(product)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "SKU товара уже используется этим партнёром")
+        raise HTTPException(409, "SKU товара уже используется этим партнёром") from exc
     db.refresh(product)
     return _product_dict(product, partner.name)
 
@@ -751,9 +751,9 @@ def update_product(
         product.moderated_at = None
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "SKU товара уже используется этим партнёром")
+        raise HTTPException(409, "SKU товара уже используется этим партнёром") from exc
     db.refresh(product)
     partner_name = db.scalar(
         select(Partner.name).where(Partner.id == product.partner_id)
@@ -775,7 +775,7 @@ def moderate_product(
         raise HTTPException(404, "Товар не найден")
     product.moderation_status = payload.status
     product.moderation_note = payload.note
-    product.moderated_at = datetime.now(timezone.utc)
+    product.moderated_at = datetime.now(UTC)
     db.add(
         AdminAuditLog(
             admin_user_id=admin.id,
@@ -852,9 +852,9 @@ def create_product_recommendation_rule(
             )
         )
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Такое правило рекомендации уже существует")
+        raise HTTPException(409, "Такое правило рекомендации уже существует") from exc
     db.refresh(rule)
     return rule
 
@@ -979,9 +979,9 @@ def create_catalog_taxonomy_alias(
             )
         )
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Такой синоним каталога уже существует")
+        raise HTTPException(409, "Такой синоним каталога уже существует") from exc
     db.refresh(item)
     return _taxonomy_alias_dict(item)
 
@@ -1118,7 +1118,7 @@ def partner_overview(
     member: PartnerMember = Depends(get_partner_member),
     db: Session = Depends(get_db),
 ) -> dict:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
     lead_base = (
         select(func.count(ProductLead.id))
         .join(Product)
@@ -1327,9 +1327,9 @@ async def import_partner_products_csv(
     )
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "CSV содержит повторяющийся SKU")
+        raise HTTPException(409, "CSV содержит повторяющийся SKU") from exc
     return {"created": created, "updated": updated}
 
 
@@ -1349,9 +1349,9 @@ def create_partner_product(
     db.add(product)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "SKU товара уже используется этим партнёром")
+        raise HTTPException(409, "SKU товара уже используется этим партнёром") from exc
     db.refresh(product)
     return _product_dict(product, partner.name)
 
@@ -1393,9 +1393,9 @@ def update_partner_product(
         product.moderated_at = None
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "SKU товара уже используется этим партнёром")
+        raise HTTPException(409, "SKU товара уже используется этим партнёром") from exc
     db.refresh(product)
     partner_name = db.scalar(
         select(Partner.name).where(Partner.id == member.partner_id)
@@ -1484,7 +1484,7 @@ def claim_partner_conversion(
     lead.status = "conversion_claimed"
     lead.partner_reference = payload.partner_reference
     lead.conversion_value_cents = payload.conversion_value_cents
-    lead.claimed_at = datetime.now(timezone.utc)
+    lead.claimed_at = datetime.now(UTC)
     lead.confirmed_at = None
     lead.rejected_at = None
     lead.review_note = None
@@ -1492,9 +1492,9 @@ def claim_partner_conversion(
     lead.billable_amount_cents = 0
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Такая ссылка на продажу уже использована для товара")
+        raise HTTPException(409, "Такая ссылка на продажу уже использована для товара") from exc
     db.refresh(lead)
     return {
         "id": lead.id,
@@ -1530,7 +1530,7 @@ def review_partner_conversion(
     lead, product, partner = row
     if lead.status != "conversion_claimed" or lead.invoice_id is not None:
         raise HTTPException(409, "Нет ожидающей проверки конверсии")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lead.reviewed_by_admin_id = admin.id
     lead.review_note = payload.note
     if payload.approved:
@@ -1599,9 +1599,9 @@ def create_partner_invoice(
     if overlapping:
         raise HTTPException(409, "За пересекающийся период уже существует счёт")
     start = datetime.combine(
-        payload.period_start, datetime.min.time(), tzinfo=timezone.utc
+        payload.period_start, datetime.min.time(), tzinfo=UTC
     )
-    end = datetime.combine(payload.period_end, datetime.min.time(), tzinfo=timezone.utc)
+    end = datetime.combine(payload.period_end, datetime.min.time(), tzinfo=UTC)
     leads = list(
         db.scalars(
             select(ProductLead)
@@ -1629,7 +1629,7 @@ def create_partner_invoice(
         )
     except InvoiceDocumentError as exc:
         raise HTTPException(422, str(exc)) from exc
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     invoice = PartnerInvoice(
         partner_id=partner.id,
         period_start=payload.period_start,
@@ -1685,9 +1685,9 @@ def create_partner_invoice(
             )
         )
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Счёт за этот период уже существует")
+        raise HTTPException(409, "Счёт за этот период уже существует") from exc
     db.refresh(invoice)
     return invoice
 
@@ -1833,10 +1833,10 @@ def send_partner_invoice(
         .order_by(PartnerInvoiceDelivery.attempt_number.desc())
         .limit(1)
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     latest_created_at = latest.created_at if latest else None
     if latest_created_at and latest_created_at.tzinfo is None:
-        latest_created_at = latest_created_at.replace(tzinfo=timezone.utc)
+        latest_created_at = latest_created_at.replace(tzinfo=UTC)
     pending_is_fresh = bool(
         latest
         and latest.status == "pending"
@@ -1867,16 +1867,14 @@ def send_partner_invoice(
     db.add(delivery)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Отправка счёта уже выполняется")
+        raise HTTPException(409, "Отправка счёта уже выполняется") from exc
 
-    try:
+    # The persisted pending row is the outbox record: Celery beat can safely
+    # republish it and duplicate delivery is guarded by an atomic claim.
+    with contextlib.suppress(Exception):
         dispatch_invoice_delivery(delivery.id)
-    except Exception:  # nosec B110
-        # The persisted pending row is the outbox record: Celery beat can
-        # safely republish it and duplicate delivery is guarded by an atomic claim.
-        pass
     delivery = db.get(PartnerInvoiceDelivery, delivery.id)
     if delivery.status == "failed" and settings.diagnosis_execution_mode != "celery":
         raise HTTPException(502, "Не удалось отправить счёт")
@@ -1931,7 +1929,7 @@ def import_partner_payments(
         if is_match:
             invoice.status = "paid"
             invoice.paid_at = datetime.combine(
-                record.booking_date, datetime.min.time(), tzinfo=timezone.utc
+                record.booking_date, datetime.min.time(), tzinfo=UTC
             )
             matched_invoice_ids.add(invoice.id)
             matched += 1
@@ -1967,9 +1965,9 @@ def import_partner_payments(
     )
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Банковская операция уже импортирована")
+        raise HTTPException(409, "Банковская операция уже импортирована") from exc
     return {
         "imported": imported,
         "matched": matched,
@@ -2018,7 +2016,7 @@ def resolve_partner_payment(
         raise HTTPException(404, "Банковская операция не найдена")
     if payment.status != "unmatched":
         raise HTTPException(409, "Решение по банковской операции уже принято")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if payload.action == "reject":
         payment.status = "rejected"
         payment.invoice_id = None
@@ -2056,7 +2054,7 @@ def resolve_partner_payment(
         payment.status = "matched"
         invoice.status = "paid"
         invoice.paid_at = datetime.combine(
-            payment.booking_date, datetime.min.time(), tzinfo=timezone.utc
+            payment.booking_date, datetime.min.time(), tzinfo=UTC
         )
     payment.resolution_note = payload.note
     payment.resolved_by_admin_id = admin.id
@@ -2098,7 +2096,7 @@ def update_partner_invoice_status(
             "Прямая отметка оплаты запрещена; зарегистрируйте ручной платёж",
         )
     else:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         invoice.status = "void"
         invoice.cancelled_at = now
         invoice.cancelled_by_admin_id = admin.id
@@ -2150,9 +2148,9 @@ def update_partner_invoice_status(
     )
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Документ аннулирования уже существует")
+        raise HTTPException(409, "Документ аннулирования уже существует") from exc
     db.refresh(invoice)
     return invoice
 
@@ -2176,7 +2174,7 @@ def create_manual_partner_payment(
         raise HTTPException(404, "Счёт не найден")
     if invoice.status != "issued":
         raise HTTPException(409, "Оплатить можно только выставленный неоплаченный счёт")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     source = f"manual:{payload.payment_method}"
     payment = PartnerPayment(
         invoice_id=invoice.id,
@@ -2194,7 +2192,7 @@ def create_manual_partner_payment(
     )
     invoice.status = "paid"
     invoice.paid_at = datetime.combine(
-        payload.booking_date, datetime.min.time(), tzinfo=timezone.utc
+        payload.booking_date, datetime.min.time(), tzinfo=UTC
     )
     db.add(payment)
     db.add(
@@ -2213,9 +2211,9 @@ def create_manual_partner_payment(
     )
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Платёж с таким внешним ID уже зарегистрирован")
+        raise HTTPException(409, "Платёж с таким внешним ID уже зарегистрирован") from exc
     db.refresh(payment)
     return payment
 

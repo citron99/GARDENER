@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import smtplib
 import ssl
 from collections import Counter
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import UTC
 from email.message import EmailMessage
 from hashlib import sha256
 from hmac import compare_digest
@@ -286,7 +286,7 @@ def document_sha256(document: bytes) -> str:
 
 def _canonical_datetime(value) -> str:
     if value.tzinfo is not None:
-        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        value = value.astimezone(UTC).replace(tzinfo=None)
     return value.isoformat()
 
 

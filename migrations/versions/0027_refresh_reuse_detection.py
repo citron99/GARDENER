@@ -4,9 +4,8 @@ Revision ID: 0027_refresh_reuse
 Revises: 0026_partner_clicks
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0027_refresh_reuse"
 down_revision = "0026_partner_clicks"

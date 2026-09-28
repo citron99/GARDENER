@@ -1,7 +1,6 @@
 from collections import defaultdict
 from threading import Lock
 
-
 _lock = Lock()
 _requests: dict[tuple[str, str, int], int] = defaultdict(int)
 _duration_count: dict[tuple[str, str], int] = defaultdict(int)

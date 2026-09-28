@@ -1,10 +1,10 @@
 import hashlib
 import json
-import math
 import logging
+import math
 import re
 from collections import OrderedDict
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from threading import Lock
 from time import monotonic
@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.database import SessionLocal
 from app.models import KnowledgeChunk, KnowledgeSourceRecord
-
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +181,8 @@ def sync_builtin_knowledge(db: Session, provider: EmbeddingProvider | None = Non
         record.languages = source.language
         record.plant_types = source.plant_types
         record.problem_types = source.problem_types
-        record.last_verified_at = datetime.combine(source.last_verified_at, time.min, tzinfo=timezone.utc)
-        record.next_review_at = datetime.combine(source.next_review_at, time.min, tzinfo=timezone.utc)
+        record.last_verified_at = datetime.combine(source.last_verified_at, time.min, tzinfo=UTC)
+        record.next_review_at = datetime.combine(source.next_review_at, time.min, tzinfo=UTC)
         record.reviewed_by = source.reviewed_by
         record.review_role = source.review_role
         record.usage_basis = source.usage_basis
@@ -226,8 +225,8 @@ def upsert_knowledge_source(
     record.languages = source.language
     record.plant_types = source.plant_types
     record.problem_types = source.problem_types
-    record.last_verified_at = datetime.combine(source.last_verified_at, time.min, tzinfo=timezone.utc)
-    record.next_review_at = datetime.combine(source.next_review_at, time.min, tzinfo=timezone.utc)
+    record.last_verified_at = datetime.combine(source.last_verified_at, time.min, tzinfo=UTC)
+    record.next_review_at = datetime.combine(source.next_review_at, time.min, tzinfo=UTC)
     record.reviewed_by = source.reviewed_by
     record.review_role = source.review_role
     record.usage_basis = source.usage_basis
@@ -285,7 +284,7 @@ def _retrieve_from_database(
     query_embedding = _query_embedding(provider, query)
     filters = (
         KnowledgeSourceRecord.active.is_(True),
-        KnowledgeSourceRecord.next_review_at >= datetime.now(timezone.utc),
+        KnowledgeSourceRecord.next_review_at >= datetime.now(UTC),
     )
     if db.bind is not None and db.bind.dialect.name == "postgresql":
         # Read the distance from the same query: fetching it per chunk turned

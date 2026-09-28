@@ -4,9 +4,8 @@ Revision ID: 0032_product_commerce
 Revises: 0031_taxonomy_aliases
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0032_product_commerce"
 down_revision = "0031_taxonomy_aliases"

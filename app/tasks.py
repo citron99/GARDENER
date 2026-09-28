@@ -1,37 +1,36 @@
 from celery import Celery
+from sqlalchemy import select
 
 from app.config import settings, validate_runtime_settings
+from app.database import SessionLocal
+from app.models import AccountDeletionRequest, DiagnosisJob
+from app.services.account_deletion_service import (
+    mark_cancellation_requested,
+    mark_cancellation_retry,
+)
+from app.services.alert_service import dispatch_operational_alert
+from app.services.billing_service import (
+    BillingProviderError,
+    cancel_stripe_subscription,
+)
 from app.services.diagnosis_job_service import (
     RetryableDiagnosisJob,
     process_diagnosis_job,
-)
-from app.database import SessionLocal
-from app.models import AccountDeletionRequest, DiagnosisJob
-from app.services.alert_service import dispatch_operational_alert
-from app.services.notification_service import (
-    deliver_pending_telegram_notifications,
-    generate_due_notifications,
-)
-from app.services.maintenance_service import (
-    cleanup_expired_records,
-    recover_stale_diagnosis_jobs,
 )
 from app.services.invoice_delivery_service import (
     mark_stale_invoice_deliveries_unknown,
     pending_invoice_delivery_ids,
     process_invoice_delivery,
 )
+from app.services.maintenance_service import (
+    cleanup_expired_records,
+    recover_stale_diagnosis_jobs,
+)
+from app.services.notification_service import (
+    deliver_pending_telegram_notifications,
+    generate_due_notifications,
+)
 from app.services.storage_outbox_service import process_storage_deletion_outbox
-from app.services.account_deletion_service import (
-    mark_cancellation_requested,
-    mark_cancellation_retry,
-)
-from app.services.billing_service import (
-    BillingProviderError,
-    cancel_stripe_subscription,
-)
-from sqlalchemy import select
-
 
 validate_runtime_settings()
 
@@ -97,7 +96,7 @@ def analyze_diagnosis_task(self, job_id: str) -> int | None:
         )
     except RetryableDiagnosisJob as exc:
         countdown = min(60, 5 * (2**self.request.retries))
-        raise self.retry(exc=exc, countdown=countdown)
+        raise self.retry(exc=exc, countdown=countdown) from exc
 
 
 @celery_app.task(name="invoices.deliver")

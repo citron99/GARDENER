@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -15,7 +15,7 @@ def test_pending_notification_is_delivered_to_telegram_once(client, monkeypatch)
         "language": "en",
     })
     assert response.status_code == 201
-    now = datetime(2026, 7, 13, 8, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 13, 8, tzinfo=UTC)
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == "proactive@example.com"))
         db.add(TelegramAccount(user_id=user.id, chat_id=123456, language="en", active=True))

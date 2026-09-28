@@ -1,8 +1,7 @@
 """Partner catalog, products and privacy-minimal leads."""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0010_partner_catalog"
 down_revision = "0009_admin_role"

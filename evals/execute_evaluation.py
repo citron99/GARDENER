@@ -3,7 +3,7 @@ import hashlib
 import json
 import mimetypes
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -151,7 +151,7 @@ def execute(cases: list[dict], output: Path, limit: int | None = None) -> dict:
             "provider": settings.ai_provider,
             "model_name": gateway.model_name,
             "prompt_version": gateway.prompt_version,
-            "executed_at": datetime.now(timezone.utc).isoformat(),
+            "executed_at": datetime.now(UTC).isoformat(),
         },
         "results": results,
     }

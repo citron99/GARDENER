@@ -4,9 +4,8 @@ Revision ID: 0022_product_registry
 Revises: 0021_partner_billing
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0022_product_registry"
 down_revision = "0021_partner_billing"

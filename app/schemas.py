@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -135,7 +135,7 @@ class CareEventRead(BaseModel):
     @field_validator("occurred_at", "created_at")
     @classmethod
     def assume_utc_for_sqlite(cls, value: datetime) -> datetime:
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class ReminderKind(StrEnum):
@@ -246,7 +246,7 @@ class ReminderRead(BaseModel):
     @classmethod
     def assume_utc_for_sqlite(cls, value: datetime | None) -> datetime | None:
         return (
-            value.replace(tzinfo=timezone.utc)
+            value.replace(tzinfo=UTC)
             if value is not None and value.tzinfo is None
             else value
         )
@@ -271,7 +271,7 @@ class CalendarItemRead(BaseModel):
     @field_validator("starts_at")
     @classmethod
     def assume_utc_for_sqlite(cls, value: datetime) -> datetime:
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class NotificationRead(BaseModel):
@@ -290,7 +290,7 @@ class NotificationRead(BaseModel):
     @classmethod
     def notification_assume_utc(cls, value: datetime | None) -> datetime | None:
         return (
-            value.replace(tzinfo=timezone.utc)
+            value.replace(tzinfo=UTC)
             if value is not None and value.tzinfo is None
             else value
         )

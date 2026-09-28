@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import jwt
@@ -15,13 +15,12 @@ from app.database import get_db
 from app.models import AuthSession, User
 from app.schemas import TokenRead
 
-
 password_hash = PasswordHash.recommended()
 bearer = HTTPBearer(auto_error=False)
 
 
 def _aware(value: datetime) -> datetime:
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def hash_password(password: str) -> str:
@@ -33,7 +32,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: int, session_id: str) -> str:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expires = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(
         {"sub": str(user_id), "sid": session_id, "jti": str(uuid4()), "exp": expires},
         settings.jwt_secret,
@@ -46,7 +45,7 @@ def _refresh_hash(token: str) -> str:
 
 
 def create_token_pair(user: User, db: Session, session: AuthSession | None = None) -> TokenRead:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     refresh_token = secrets.token_urlsafe(48)
     if session is None:
         session = AuthSession(
@@ -68,7 +67,7 @@ def create_token_pair(user: User, db: Session, session: AuthSession | None = Non
 
 
 def rotate_refresh_token(refresh_token: str, db: Session) -> TokenRead:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     token_hash = _refresh_hash(refresh_token)
     session = db.query(AuthSession).filter(
         AuthSession.refresh_token_hash == token_hash,
@@ -97,7 +96,7 @@ def revoke_refresh_token(refresh_token: str, db: Session) -> bool:
     ).one_or_none()
     if not session:
         return False
-    session.revoked_at = datetime.now(timezone.utc)
+    session.revoked_at = datetime.now(UTC)
     db.commit()
     return True
 
@@ -113,10 +112,10 @@ def get_current_user(
         payload = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=["HS256"])
         user_id = int(payload["sub"])
         session_id = str(payload["sid"])
-    except (InvalidTokenError, KeyError, TypeError, ValueError):
-        raise error
+    except (InvalidTokenError, KeyError, TypeError, ValueError) as exc:
+        raise error from exc
     session = db.get(AuthSession, session_id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user = db.get(User, user_id)
     if (not user or user.is_blocked or user.email_verified_at is None or
             not session or session.user_id != user.id or

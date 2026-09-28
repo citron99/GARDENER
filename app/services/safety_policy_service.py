@@ -1,13 +1,12 @@
+import re
 from dataclasses import dataclass
 from datetime import date
-import re
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import RegulatedProductRegistration
 from app.schemas import AnalysisOutcome, DiagnosisResult
-
 
 _DOSE = re.compile(
     r"\b\d+(?:[.,]\d+)?\s*(?:ml|millilit(?:er|re)|g|gram|kg|l|lit(?:er|re)|мл|г|кг|л)\b",

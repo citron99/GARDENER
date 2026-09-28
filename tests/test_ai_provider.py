@@ -9,8 +9,8 @@ from app.ai.providers.openai_multimodal import OpenAIMultimodalGateway
 from app.config import settings, validate_runtime_settings
 from app.models import Plant, PlantPhoto
 from app.schemas import DiagnosisCreate, DiagnosisResult, PossibleCause
-from app.services.knowledge_service import retrieve_knowledge
 from app.services.ai_safety import safety_identifier_for_user
+from app.services.knowledge_service import retrieve_knowledge
 
 
 def valid_result() -> DiagnosisResult:

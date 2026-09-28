@@ -6,7 +6,6 @@ Revises: 0038_invoice_pdf_storage
 
 from alembic import op
 
-
 revision = "0039_commerce_constraints"
 down_revision = "0038_invoice_pdf_storage"
 branch_labels = None

@@ -2,7 +2,6 @@
 
 from alembic import op
 
-
 revision = "0004_unique_feedback"
 down_revision = "0003_diagnosis_workflow"
 branch_labels = None

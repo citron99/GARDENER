@@ -1,8 +1,7 @@
 """Базовая схема MVP до связи диагностик с фотографиями."""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0001_base"
 down_revision = None

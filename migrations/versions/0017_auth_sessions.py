@@ -4,9 +4,8 @@ Revision ID: 0017_auth_sessions
 Revises: 0016_product_safety_and_job_leases
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0017_auth_sessions"
 down_revision = "0016_product_safety_and_job_leases"

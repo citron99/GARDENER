@@ -16,7 +16,6 @@ from app.services.billing_service import (
     verify_stripe_signature,
 )
 
-
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 

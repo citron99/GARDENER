@@ -1,6 +1,5 @@
 import re
 
-
 _MESSAGES = {
     "en": {
         "Требуется действительный токен доступа": "A valid access token is required",

@@ -4,9 +4,8 @@ Revision ID: 0018_object_storage
 Revises: 0017_auth_sessions
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0018_object_storage"
 down_revision = "0017_auth_sessions"

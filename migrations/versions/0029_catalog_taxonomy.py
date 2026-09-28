@@ -4,9 +4,8 @@ Revision ID: 0029_catalog_taxonomy
 Revises: 0028_photo_quotas
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "0029_catalog_taxonomy"
 down_revision = "0028_photo_quotas"

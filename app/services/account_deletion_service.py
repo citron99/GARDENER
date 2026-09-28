@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ def stage_account_deletion(
     db.query(AuthSession).filter(
         AuthSession.user_id == user.id,
         AuthSession.revoked_at.is_(None),
-    ).update({AuthSession.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+    ).update({AuthSession.revoked_at: datetime.now(UTC)}, synchronize_session=False)
     db.commit()
     db.refresh(request)
     return request
@@ -38,7 +38,7 @@ def mark_cancellation_requested(db: Session, request: AccountDeletionRequest) ->
     request.attempts += 1
     request.status = "awaiting_webhook"
     request.last_error = None
-    request.cancellation_requested_at = datetime.now(timezone.utc)
+    request.cancellation_requested_at = datetime.now(UTC)
     db.commit()
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from threading import Lock
 from time import monotonic
 
@@ -131,7 +131,7 @@ class WeatherService:
             latitude=place["latitude"],
             longitude=place["longitude"],
             timezone=payload.get("timezone") or place.get("timezone") or "UTC",
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=datetime.now(UTC),
             daily=daily,
             warnings=warnings,
         )

@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 import hashlib
 import logging
 import secrets
 import smtplib
 import ssl
+from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import AccountActionToken, User
-
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +24,14 @@ def issue_action_token(db: Session, user: User, purpose: str, ttl_minutes: int =
     raw = secrets.token_urlsafe(48)
     db.add(AccountActionToken(
         id=str(uuid4()), user_id=user.id, purpose=purpose, token_hash=_hash(raw),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes),
+        expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
     ))
     db.commit()
     return raw
 
 
 def consume_action_token(db: Session, raw: str, purpose: str) -> User | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = db.scalar(select(AccountActionToken).where(
         AccountActionToken.token_hash == _hash(raw),
         AccountActionToken.purpose == purpose,

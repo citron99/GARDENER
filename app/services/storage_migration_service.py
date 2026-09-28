@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -109,7 +109,7 @@ def migrate_local_photos_to_s3(
             _verify_object(client, key, len(content), checksum)
             photo.storage_key = key
             record.status = "completed"
-            record.verified_at = datetime.now(timezone.utc)
+            record.verified_at = datetime.now(UTC)
             db.commit()
             report["uploaded"] += 1
             report["verified"] += 1

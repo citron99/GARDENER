@@ -1,12 +1,21 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import (AIRequestLog, AccountActionToken, AuthSession, BillingEvent, DiagnosisJob,
-                        PlantPhoto, TelegramLinkToken, TelegramUpdate, UserNotification)
+from app.models import (
+    AccountActionToken,
+    AIRequestLog,
+    AuthSession,
+    BillingEvent,
+    DiagnosisJob,
+    PlantPhoto,
+    TelegramLinkToken,
+    TelegramUpdate,
+    UserNotification,
+)
 from app.services.product_registry_service import revalidate_registry_rules
 from app.services.storage_outbox_service import enqueue_photo_deletions
 
@@ -17,7 +26,7 @@ def recover_stale_diagnosis_jobs(
     now: datetime | None = None,
 ) -> dict[str, list[str] | dict[str, str]]:
     """Reserve expired or orphaned jobs for redelivery after this transaction commits."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     orphaned_before = now - timedelta(seconds=settings.diagnosis_job_recovery_grace_seconds)
     jobs = list(db.scalars(
         select(DiagnosisJob)
@@ -63,7 +72,7 @@ def recover_stale_diagnosis_jobs(
 
 
 def cleanup_expired_records(db: Session, *, now: datetime | None = None) -> dict[str, int]:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     cutoffs = {
         "jobs": now - timedelta(days=settings.completed_job_retention_days),
         "notifications": now - timedelta(days=settings.notification_retention_days),

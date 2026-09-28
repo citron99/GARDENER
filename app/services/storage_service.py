@@ -1,6 +1,7 @@
+import contextlib
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
-from hashlib import sha256
 
 from app.config import settings
 from app.models import PlantPhoto
@@ -210,10 +211,8 @@ def delete_storage_reference(
         path = Path(file_path).resolve()
         try:
             path.relative_to(settings.upload_dir.resolve())
-        except ValueError:
-            raise StorageError("Некорректный путь фотографии")
+        except ValueError as exc:
+            raise StorageError("Некорректный путь фотографии") from exc
         path.unlink(missing_ok=True)
-        try:
+        with contextlib.suppress(OSError):
             path.parent.rmdir()
-        except OSError:
-            pass
