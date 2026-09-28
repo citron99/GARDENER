@@ -283,20 +283,31 @@ def _retrieve_from_database(
         return _retrieve_static(query, limit, region, language)
     provider = create_embedding_provider()
     query_embedding = _query_embedding(provider, query)
-    base = (
-        select(KnowledgeChunk)
-        .join(KnowledgeChunk.source)
-        .where(
-            KnowledgeSourceRecord.active.is_(True),
-            KnowledgeSourceRecord.next_review_at >= datetime.now(timezone.utc),
-        )
-        .options(selectinload(KnowledgeChunk.source))
+    filters = (
+        KnowledgeSourceRecord.active.is_(True),
+        KnowledgeSourceRecord.next_review_at >= datetime.now(timezone.utc),
     )
     if db.bind is not None and db.bind.dialect.name == "postgresql":
-        chunks = list(db.scalars(base.order_by(KnowledgeChunk.embedding.cosine_distance(query_embedding)).limit(limit * 4)))
-        semantic = {chunk.id: 1.0 - float(db.scalar(select(KnowledgeChunk.embedding.cosine_distance(query_embedding)).where(KnowledgeChunk.id == chunk.id)) or 1.0) for chunk in chunks}
+        # Read the distance from the same query: fetching it per chunk turned
+        # one ranked SELECT into up to limit * 4 extra round trips.
+        distance = KnowledgeChunk.embedding.cosine_distance(query_embedding)
+        rows = db.execute(
+            select(KnowledgeChunk, distance)
+            .join(KnowledgeChunk.source)
+            .where(*filters)
+            .options(selectinload(KnowledgeChunk.source))
+            .order_by(distance)
+            .limit(limit * 4)
+        ).all()
+        chunks = [chunk for chunk, _distance in rows]
+        semantic = {chunk.id: 1.0 - float(value or 1.0) for chunk, value in rows}
     else:
-        chunks = list(db.scalars(base))
+        chunks = list(db.scalars(
+            select(KnowledgeChunk)
+            .join(KnowledgeChunk.source)
+            .where(*filters)
+            .options(selectinload(KnowledgeChunk.source))
+        ))
         semantic = {chunk.id: _cosine(query_embedding, list(chunk.embedding)) for chunk in chunks}
     normalized_region = (region or "").casefold()
     normalized_query = query.casefold()

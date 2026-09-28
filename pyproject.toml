@@ -1,0 +1,18 @@
+[tool.ruff]
+# Keep in sync with the Python version used by the container and CI.
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "uploads", "playwright-report"]
+
+[tool.ruff.lint]
+# The rules CI enforces today. Widening this set (I, B, UP, SIM) should be a
+# deliberate follow-up so the change stays reviewable.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

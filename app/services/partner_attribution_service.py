@@ -62,4 +62,29 @@ def add_click_id(url: str, signed_click_id: str) -> str:
 
 
 def hash_partner_key(value: str) -> str:
+    """Hash a partner postback key with a server-side secret.
+
+    A plain digest would let anyone with a copy of the table verify guessed
+    keys offline, so the value is keyed with PARTNER_ATTRIBUTION_SECRET.
+    """
+    return hmac.new(
+        settings.partner_attribution_secret.encode("utf-8"),
+        value.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def legacy_partner_key_hash(value: str) -> str:
+    """Pre-HMAC scheme, kept only to recognise keys stored before the upgrade."""
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def verify_partner_key(value: str, stored_hash: str | None) -> tuple[bool, bool]:
+    """Return (matches, needs_rehash) for a supplied postback key."""
+    if not stored_hash:
+        return False, False
+    if hmac.compare_digest(hash_partner_key(value), stored_hash):
+        return True, False
+    if hmac.compare_digest(legacy_partner_key_hash(value), stored_hash):
+        return True, True
+    return False, False

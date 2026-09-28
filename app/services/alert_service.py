@@ -5,6 +5,7 @@ import json
 import logging
 from threading import Lock, Thread
 import time
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from app.config import settings
@@ -30,8 +31,16 @@ def _signature(body: bytes) -> str:
 
 
 def _send(body: bytes) -> None:
+    url = settings.alert_webhook_url or ""
+    if urlsplit(url).scheme not in {"http", "https"}:
+        # A misconfigured file:// or custom scheme must never be opened.
+        logger.error(
+            "operational alert webhook rejected",
+            extra={"scheme": urlsplit(url).scheme or "missing"},
+        )
+        return
     request = Request(
-        settings.alert_webhook_url or "",
+        url,
         data=body,
         method="POST",
         headers={

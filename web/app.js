@@ -181,12 +181,19 @@ async function downloadAuthenticatedFile(path, fallbackName, allowRefresh = true
   const blob = await response.blob();
   const disposition = response.headers.get("content-disposition") || "";
   const matched = disposition.match(/filename=\x22([^\x22]+)\x22/i);
-  const url = URL.createObjectURL(blob);
+  downloadBlobUrl(URL.createObjectURL(blob), matched?.[1] || fallbackName);
+}
+
+function downloadBlobUrl(url, filename) {
+  // The anchor must be in the document for Firefox, and revoking the blob URL
+  // in the same tick cancels the download that was just started.
   const link = document.createElement("a");
   link.href = url;
-  link.download = matched?.[1] || fallbackName;
+  link.download = filename;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function setSession(token) {
@@ -1930,12 +1937,10 @@ byId("exportAccountData").addEventListener("click", async () => {
   try {
     const exported = await api("/api/v1/users/me/export");
     const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `ai-garden-data-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlobUrl(
+      URL.createObjectURL(blob),
+      `ai-garden-data-${new Date().toISOString().slice(0, 10)}.json`,
+    );
     showToast("Экспорт данных подготовлен");
   } catch (error) { showToast(error.message); }
 });

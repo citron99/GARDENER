@@ -90,14 +90,16 @@ def rotate_refresh_token(refresh_token: str, db: Session) -> TokenRead:
     return create_token_pair(user, db, session)
 
 
-def revoke_refresh_token(refresh_token: str, db: Session) -> None:
+def revoke_refresh_token(refresh_token: str, db: Session) -> bool:
     session = db.query(AuthSession).filter(
         AuthSession.refresh_token_hash == _refresh_hash(refresh_token),
         AuthSession.revoked_at.is_(None),
     ).one_or_none()
-    if session:
-        session.revoked_at = datetime.now(timezone.utc)
-        db.commit()
+    if not session:
+        return False
+    session.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    return True
 
 
 def get_current_user(

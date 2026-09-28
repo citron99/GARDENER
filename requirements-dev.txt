@@ -1,7 +1,6 @@
 -r requirements.txt
 pytest==9.0.3
 httpx==0.28.1
-httpx2==2.7.0
 pip-audit==2.10.1
 ruff==0.15.20
 pip>=26.2

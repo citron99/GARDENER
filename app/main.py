@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, time as datetime_time, timedelta, timezone
 import hmac
+import json
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -92,20 +93,102 @@ async def localized_http_exception(request: Request, exc: HTTPException) -> JSON
     return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=exc.headers)
 
 
-@app.middleware("http")
-async def request_body_limit(request: Request, call_next):
-    content_length = request.headers.get("content-length")
-    limit = settings.max_request_body_mb * 1024 * 1024
-    if content_length:
+class RequestBodyLimitMiddleware:
+    """Enforce MAX_REQUEST_BODY_MB for declared and chunked bodies alike.
+
+    A pure ASGI middleware is used because the limit has to be applied while the
+    body is streamed, and ``Content-Length`` is absent for chunked requests.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    @staticmethod
+    def _too_large_response(request: Request) -> tuple[dict, bytes]:
+        language = normalize_language(request.headers.get("accept-language"))
+        detail = translate_http_error("Тело запроса слишком большое", language, 413)
+        payload = json.dumps({"detail": detail}, ensure_ascii=False).encode("utf-8")
+        start = {
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(payload)).encode("ascii")),
+            ],
+        }
+        return start, payload
+
+    async def _reject(self, request: Request, send) -> None:
+        start, payload = self._too_large_response(request)
+        await send(start)
+        await send({"type": "http.response.body", "body": payload, "more_body": False})
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        limit = settings.max_request_body_mb * 1024 * 1024
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                too_large = int(content_length) > limit
+            except ValueError:
+                too_large = True
+            if too_large:
+                await self._reject(request, send)
+                return
+
+        consumed = 0
+        overflow = False
+        rejected = False
+
+        async def limited_receive():
+            nonlocal consumed, overflow
+            message = await receive()
+            if message.get("type") == "http.request":
+                chunk = message.get("body") or b""
+                consumed += len(chunk)
+                if consumed > limit:
+                    # Drain the stream without handing more bytes to the app.
+                    overflow = True
+                    return {
+                        "type": "http.request",
+                        "body": b"",
+                        "more_body": message.get("more_body", False),
+                    }
+            return message
+
+        async def limited_send(message):
+            nonlocal rejected
+            if not overflow:
+                await send(message)
+                return
+            if message["type"] == "http.response.start":
+                start, _ = self._too_large_response(request)
+                await send(start)
+                return
+            if message["type"] == "http.response.body":
+                if rejected:
+                    return  # the 413 response is already complete
+                rejected = True
+                _, payload = self._too_large_response(request)
+                await send(
+                    {"type": "http.response.body", "body": payload, "more_body": False}
+                )
+
         try:
-            too_large = int(content_length) > limit
-        except ValueError:
-            too_large = True
-        if too_large:
-            language = normalize_language(request.headers.get("accept-language"))
-            detail = translate_http_error("Тело запроса слишком большое", language, 413)
-            return JSONResponse(status_code=413, content={"detail": detail})
-    return await call_next(request)
+            await self.app(scope, limited_receive, limited_send)
+        except Exception:
+            if overflow and not rejected:
+                rejected = True
+                await self._reject(request, send)
+                return
+            raise
+
+
+app.add_middleware(RequestBodyLimitMiddleware)
 
 
 @app.middleware("http")
@@ -363,10 +446,12 @@ def logout_session(
     db: Session = Depends(get_db),
 ) -> Response:
     refresh_token = payload.refresh_token if payload else request.cookies.get("ai_garden_refresh")
-    if refresh_token:
-        revoke_refresh_token(refresh_token, db)
+    revoked = revoke_refresh_token(refresh_token, db) if refresh_token else False
     response.delete_cookie("ai_garden_refresh", path="/api/v1/auth")
     response.status_code = 204
+    # 204 carries no body, so clients learn whether a session was really
+    # revoked (a missing cookie would otherwise leave the access token alive).
+    response.headers["X-Session-Revoked"] = "true" if revoked else "false"
     return response
 
 

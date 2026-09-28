@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import date, datetime, timezone
 from threading import Lock
 from time import monotonic
@@ -25,7 +26,9 @@ class WeatherService:
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client or httpx.Client(timeout=settings.weather_timeout_seconds)
-        self._cache: dict[str, tuple[float, WeatherForecastRead]] = {}
+        # Bounded LRU: location strings are user-controlled, so an unbounded
+        # cache would grow for the whole lifetime of the process.
+        self._cache: OrderedDict[str, tuple[float, WeatherForecastRead]] = OrderedDict()
         self._lock = Lock()
 
     def get_forecast(self, location: str, language: str = "ru") -> WeatherForecastRead:
@@ -38,7 +41,11 @@ class WeatherService:
         with self._lock:
             cached = self._cache.get(key)
             if cached and cached[0] > now:
+                self._cache.move_to_end(key)
                 return cached[1].model_copy(deep=True)
+            if cached:
+                del self._cache[key]
+            self._expire_locked(now)
 
         try:
             place = self._geocode(location, language)
@@ -49,8 +56,18 @@ class WeatherService:
             raise WeatherServiceError("Погодный сервис временно недоступен") from exc
 
         with self._lock:
-            self._cache[key] = (now + settings.weather_cache_seconds, forecast)
+            self._expire_locked(monotonic())
+            self._cache[key] = (monotonic() + settings.weather_cache_seconds, forecast)
+            self._cache.move_to_end(key)
+            while len(self._cache) > settings.weather_cache_entries:
+                self._cache.popitem(last=False)
         return forecast.model_copy(deep=True)
+
+    def _expire_locked(self, now: float) -> None:
+        """Drop expired entries; the lock must already be held."""
+        expired = [key for key, (expires_at, _) in self._cache.items() if expires_at <= now]
+        for key in expired:
+            del self._cache[key]
 
     def _geocode(self, location: str, language: str) -> dict:
         response = self._client.get(

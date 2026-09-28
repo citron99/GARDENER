@@ -1,6 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
 import csv
-import hmac
 from io import StringIO
 import re
 import secrets
@@ -110,6 +109,7 @@ from app.services.partner_attribution_service import (
     lead_idempotency_key,
     sign_click_id,
     verify_click_token,
+    verify_partner_key,
 )
 from app.services.storage_service import (
     StorageError,
@@ -495,12 +495,15 @@ def partner_conversion_postback(
     if not row:
         raise HTTPException(404, "Переход не найден")
     lead, product, partner = row
-    supplied_hash = hash_partner_key(partner_key or "")
-    if not partner.postback_secret_hash or not hmac.compare_digest(
-        supplied_hash,
-        partner.postback_secret_hash,
-    ):
+    valid, needs_rehash = verify_partner_key(
+        partner_key or "", partner.postback_secret_hash
+    )
+    if not valid:
         raise HTTPException(401, "Некорректный partner key")
+    if needs_rehash:
+        # Rehash legacy digests on the next successful postback so stored
+        # secrets are upgraded without forcing every partner to rotate.
+        partner.postback_secret_hash = hash_partner_key(partner_key or "")
     if lead.redirected_at is None:
         raise HTTPException(409, "Переход ещё не был зарегистрирован")
     if lead.status not in {"clicked", "rejected"} or lead.invoice_id is not None:
@@ -1870,9 +1873,9 @@ def send_partner_invoice(
 
     try:
         dispatch_invoice_delivery(delivery.id)
-    except Exception:
-        # The persisted pending row is the outbox record. Celery beat can safely
-        # republish it; duplicate task delivery is guarded by an atomic claim.
+    except Exception:  # nosec B110
+        # The persisted pending row is the outbox record: Celery beat can
+        # safely republish it and duplicate delivery is guarded by an atomic claim.
         pass
     delivery = db.get(PartnerInvoiceDelivery, delivery.id)
     if delivery.status == "failed" and settings.diagnosis_execution_mode != "celery":

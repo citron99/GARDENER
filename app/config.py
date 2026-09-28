@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -44,6 +45,7 @@ class Settings(BaseSettings):
     weather_provider: str = "open_meteo"
     weather_timeout_seconds: float = 8
     weather_cache_seconds: int = 1_800
+    weather_cache_entries: int = 256
     weather_forecast_days: int = 10
     weather_frost_threshold_c: float = 2
     weather_heat_threshold_c: float = 30
@@ -169,6 +171,8 @@ def validate_runtime_settings() -> None:
         )
     if not 1 <= settings.weather_forecast_days <= 16:
         raise RuntimeError("WEATHER_FORECAST_DAYS должен быть от 1 до 16")
+    if not 8 <= settings.weather_cache_entries <= 5_000:
+        raise RuntimeError("WEATHER_CACHE_ENTRIES должен быть от 8 до 5000")
     if settings.diagnosis_execution_mode not in {"sync", "celery"}:
         raise RuntimeError("DIAGNOSIS_EXECUTION_MODE должен быть sync или celery")
     billing_provider = settings.billing_provider.strip().lower()
@@ -214,6 +218,10 @@ def validate_runtime_settings() -> None:
             )
     if not 10 <= settings.alert_min_interval_seconds <= 86_400:
         raise RuntimeError("ALERT_MIN_INTERVAL_SECONDS должен быть от 10 до 86400")
+    if settings.alert_webhook_url and urlsplit(
+        settings.alert_webhook_url
+    ).scheme not in {"http", "https"}:
+        raise RuntimeError("ALERT_WEBHOOK_URL должен использовать http или https")
     if settings.environment.lower() == "production":
         normalized_secret = settings.jwt_secret.casefold()
         normalized_safety_secret = settings.ai_safety_secret.casefold()
