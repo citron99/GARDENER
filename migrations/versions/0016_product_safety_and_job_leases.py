@@ -14,6 +14,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # Alembic creates alembic_version.version_num as VARCHAR(32), but this
+        # revision id is 34 characters, so the UPDATE that stamps it right
+        # after this script fails with StringDataRightTruncation. SQLite
+        # ignores declared lengths, which is why only PostgreSQL broke here.
+        op.execute("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
+
     with op.batch_alter_table("products") as batch:
         batch.add_column(sa.Column("moderation_status", sa.String(20), nullable=False, server_default="draft"))
         batch.add_column(sa.Column("moderation_note", sa.String(500), nullable=True))

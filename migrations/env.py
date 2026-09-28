@@ -18,17 +18,30 @@ if not config.get_main_option("sqlalchemy.url"):
 target_metadata = Base.metadata
 
 
-def compare_column_type(_context, _inspected_column, _metadata_column, inspected_type, metadata_type):
+def compare_column_type(context, _inspected_column, _metadata_column, inspected_type, metadata_type):
     """Avoid perpetual Alembic diffs for pgvector Vector(N) columns."""
     from app.vector import Vector
 
     if not isinstance(metadata_type, Vector):
         return None
+    if context.dialect.name == "sqlite":
+        # SQLite has no vector type, so the column is reflected as NUMERIC and
+        # every comparison would report a change that cannot be applied.
+        return False
     inspected_dimensions = getattr(inspected_type, "dim", None) or getattr(inspected_type, "dimensions", None)
     if inspected_dimensions is not None:
         return int(inspected_dimensions) != metadata_type.dimensions
     normalized = str(inspected_type).upper().replace(" ", "")
     return normalized not in {"VECTOR", f"VECTOR({metadata_type.dimensions})"}
+
+
+def include_object(_object, name, type_, _reflected, _compare_to):
+    """Keep indexes the ORM cannot express out of autogenerate comparisons."""
+    # Migration 0014 creates ix_knowledge_chunks_embedding_hnsw with
+    # `USING hnsw (embedding vector_cosine_ops)`, which pgvector needs for the
+    # ranked knowledge query. Autogenerate cannot read those options back, so
+    # it would propose dropping the index that semantic search depends on.
+    return not (type_ == "index" and name == "ix_knowledge_chunks_embedding_hnsw")
 
 
 def run_migrations_offline() -> None:
@@ -50,7 +63,12 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=compare_column_type)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=compare_column_type,
+            include_object=include_object,
+        )
         with context.begin_transaction():
             context.run_migrations()
 
